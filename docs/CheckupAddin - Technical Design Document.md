@@ -14,7 +14,7 @@
 
 - See all relevant properties of the active or selected part at a glance
 - Write iProperties and parameters directly from the add-in
-- Preset layouts for different part types (Part, Assembly, etc. — default preset names are in German)
+- Saveable preset layouts — load a named preset to show the relevant fields for that document type
 - Logic Constructor: configure derived/computed fields without coding
 - ~~Spezi Baukasten: catalog-backed specialty designations for IZ-specific parts~~ **⚠ Legacy** — replaced by Logic Constructor capability set
 - Style Purger: one-click cleanup of unused styles in IDW/IPT/IAM
