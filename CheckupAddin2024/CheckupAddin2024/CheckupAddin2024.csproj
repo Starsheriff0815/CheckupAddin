@@ -1,0 +1,71 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net48</TargetFramework>
+		<UseWPF>true</UseWPF>
+		<Platforms>x64</Platforms>
+		<Nullable>disable</Nullable>
+		<ImplicitUsings>disable</ImplicitUsings>
+		<LangVersion>latest</LangVersion>
+		<RootNamespace>CheckupAddIn</RootNamespace>
+		<AssemblyName>CheckupAddIn2024</AssemblyName>
+		<GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+		<Version>0.9.8</Version>
+		<Author>Norman Lindner</Author>
+		<Description>Checkup 2024 for Autodesk Inventor 2024</Description>
+		<OutputPath>bin\</OutputPath>
+		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Reference Include="Microsoft.VisualBasic" />
+		<Reference Include="Microsoft.CSharp" />
+		<Reference Include="Autodesk.Inventor.Interop">
+			<HintPath>..\..\lib\Autodesk.Inventor.Interop.dll</HintPath>
+			<EmbedInteropTypes>false</EmbedInteropTypes>
+			<Private>true</Private>
+		</Reference>
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<EmbeddedResource Include="Icon Checkup.png">
+			<LogicalName>CheckupAddIn.checkup_icon.png</LogicalName>
+		</EmbeddedResource>
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Update="Autodesk.CheckupAddIn2024.addin">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</None>
+		<None Update="Checkup_Settings.json">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</None>
+		<None Update="Resources\Languages\Addin_Language_File_DE.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<TargetPath>Languages\Addin_Language_File_DE.json</TargetPath>
+		</None>
+		<None Update="Resources\Languages\Addin_Language_File_EN.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<TargetPath>Languages\Addin_Language_File_EN.json</TargetPath>
+		</None>
+		<None Update="Checkup_Catalogs.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Update="Checkup_Capabilities.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Update="Resources\Test_Spezifik.capability.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<TargetPath>Capabilities\Test_Spezifik.capability.json</TargetPath>
+		</None>
+		<None Update="Resources\Test_Spezifik.catalog.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<TargetPath>Catalogs\Test_Spezifik.catalog.json</TargetPath>
+		</None>
+	</ItemGroup>
+
+</Project>

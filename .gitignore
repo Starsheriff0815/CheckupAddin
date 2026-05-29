@@ -1,0 +1,34 @@
+# ── Build output ──────────────────────────────────────────────────────────────
+**/bin/
+**/obj/
+
+# ── Visual Studio ──────────────────────────────────────────────────────────────
+**/.vs/
+*.user
+*.suo
+*.rsuser
+*.userosscache
+
+# ── NuGet ──────────────────────────────────────────────────────────────────────
+**/packages/
+**/project.nuget.cache
+**/project.assets.json
+
+# ── Addin manifest files (personal — each user generates their own from .addin.template) ──
+*.addin
+
+# ── Personal runtime data (catalogs, capabilities, settings, presets) ──────────
+**/Checkup_Catalogs.json
+**/Checkup_Capabilities.json
+**/Checkup_Capabilities.json.migrated
+**/Checkup_Settings.json
+Exported_*_Presets.json
+
+# ── Test / sample data with company-specific content ──────────────────────────
+**/Resources/Test_Spezifik.*
+
+# ── Dotfuscator output ─────────────────────────────────────────────────────────
+**/Dotfuscator/Dotfuscated/
+
+# ── Claude Code local settings ─────────────────────────────────────────────────
+**/.claude/
