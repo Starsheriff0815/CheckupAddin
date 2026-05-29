@@ -1311,7 +1311,7 @@ namespace CheckupAddIn.ViewModels
             }
             catch (Exception ex)
             {
-                DiagLogger.Log("expertmode", $"Expert post-pass FATAL: {ex.GetType().Name}: {ex.Message.Replace("\r","").Replace("\n"," ")} | {ex.StackTrace?.Replace("\r","").Replace("\n"," ")}");
+                DiagLogger.Log("expertmode", $"Expert post-pass FATAL: {ex.GetType().Name}: {DiagLogger.S(ex.Message)} | {DiagLogger.S(ex.StackTrace)}");
             }
 
             // Post-pass: Logic mismatch detection + multi-token segment computation
