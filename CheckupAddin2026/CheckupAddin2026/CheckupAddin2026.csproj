@@ -1,0 +1,80 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net8.0-windows</TargetFramework>
+		<UseWPF>true</UseWPF>
+		<Platforms>x64</Platforms>
+		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
+		<EnableComHosting>true</EnableComHosting>
+		<Nullable>disable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<RootNamespace>CheckupAddIn</RootNamespace>
+		<AssemblyName>CheckupAddIn</AssemblyName>
+		<GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+		<Version>0.9.7</Version>
+		<Author>Norman Lindner</Author>
+		<Description>Checkup for Autodesk Inventor 2026</Description>
+		<OutputPath>bin\</OutputPath>
+		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+		<AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Reference Include="Autodesk.Inventor.Interop">
+			<HintPath>..\..\lib\Autodesk.Inventor.Interop.dll</HintPath>
+			<EmbedInteropTypes>false</EmbedInteropTypes>
+			<Private>true</Private>
+		</Reference>
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="System.Drawing.Common" Version="8.0.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<EmbeddedResource Include="Icon Checkup.png">
+			<LogicalName>CheckupAddIn.checkup_icon.png</LogicalName>
+		</EmbeddedResource>
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Update="Autodesk.CheckupAddIn2026.addin">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</None>
+		<None Update="Checkup_Settings.json">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</None>
+		<None Update="Resources\Languages\Addin_Language_File_DE.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<TargetPath>Languages\Addin_Language_File_DE.json</TargetPath>
+		</None>
+		<None Update="Resources\Languages\Addin_Language_File_EN.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<TargetPath>Languages\Addin_Language_File_EN.json</TargetPath>
+		</None>
+<None Update="Checkup_Catalogs.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Update="Checkup_Capabilities.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Update="Resources\Test_Spezifik.capability.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<TargetPath>Capabilities\Test_Spezifik.capability.json</TargetPath>
+		</None>
+		<None Update="Resources\Test_Spezifik.catalog.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<TargetPath>Catalogs\Test_Spezifik.catalog.json</TargetPath>
+		</None>
+		<None Include="Bereinigen IDW+IPT+IAM.iLogicVb" />
+	</ItemGroup>
+
+	<!-- Create empty Catalogs\ and Capabilities\ subfolders in the output directory.
+	     Condition prevents touching existing directories (MakeDir is already idempotent,
+	     but the explicit Condition makes the intent clear). -->
+	<Target Name="CreateDevSubfolders" AfterTargets="Build">
+		<MakeDir Directories="$(OutputPath)Catalogs"      Condition="!Exists('$(OutputPath)Catalogs')"/>
+		<MakeDir Directories="$(OutputPath)Capabilities"  Condition="!Exists('$(OutputPath)Capabilities')"/>
+	</Target>
+
+</Project>
