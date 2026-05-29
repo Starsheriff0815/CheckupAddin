@@ -3,7 +3,7 @@
 A WPF MVVM add-in for Autodesk Inventor that provides a fast, user-configurable property panel for parts and assemblies.
 
 - Read and write iProperties and parameters directly — no need to open Inventor's own dialogs
-- Preset layouts for different part types (Part, Assembly, Miter Gap — default preset names are in German)
+- Saveable preset layouts — load a named preset to show the relevant fields for that document type
 - Logic Constructor: configure derived/computed fields without coding, using catalog-backed cards and formula expressions
 - Style Purger: one-click cleanup of unused styles in IDW, IPT, and IAM documents
 - German and English UI (language detected automatically from Inventor)
