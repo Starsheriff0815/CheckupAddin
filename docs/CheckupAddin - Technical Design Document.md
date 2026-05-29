@@ -14,12 +14,12 @@
 
 - See all relevant properties of the active or selected part at a glance
 - Write iProperties and parameters directly from the add-in
-- Preset layouts for different part types (Bauteil, Baugruppe, etc.)
+- Preset layouts for different part types (Part, Assembly, etc. — default preset names are in German)
 - Logic Constructor: configure derived/computed fields without coding
 - ~~Spezi Baukasten: catalog-backed specialty designations for IZ-specific parts~~ **⚠ Legacy** — replaced by Logic Constructor capability set
 - Style Purger: one-click cleanup of unused styles in IDW/IPT/IAM
 
-**Target user:** Engineering Teams (internal tool). German and English UI with and more Languages.
+**Target user:** Engineering teams. German and English UI (language detected automatically from Inventor; additional languages can be added).
 
 ---
 
@@ -185,15 +185,15 @@ Three elements from left to right:
   - When filter cleared (text deleted or ESC): groups revert to their saved collapse state. Filter text clears automatically when popup closes.
 
   **Zone 2 — Fixed actions (always visible, never filtered):**
-  - `+ Zeile hinzufügen` (`__ADD_ROW__`)
-  - `- Zeile entfernen` (`__REMOVE_ROW__`)
+  - `"+ Zeile hinzufügen"` (Add Row) (`__ADD_ROW__`)
+  - `"- Zeile entfernen"` (Remove Row) (`__REMOVE_ROW__`)
 
-  **Zone 3 — Favoriten / Sticky zone:**
+  **Zone 3 — Favorites / Sticky zone** (German label: "Favoriten"):
   - Contains entries the user has explicitly pinned (any field type, from any group).
   - Pinned entries not available on the current Source Object: shown with **strikethrough** text (still visible, can be unpinned).
   - Subject to search filter; non-matching pinned entries hidden during active filter.
   - Each entry has a **drag handle** (left edge) for reordering within the zone.
-  - **Pin / unpin gesture:** single **right-click** on any entry anywhere in the popup toggles its pinned state. Right-click in Zone 3 unpins; right-click in Zone 4 pins. Hover tooltip on all pinnable entries: *"Rechtsklick: Als Favorit anheften / lösen"*. Add Row / Remove Row are immune — right-click has no effect on them.
+  - **Pin / unpin gesture:** single **right-click** on any entry anywhere in the popup toggles its pinned state. Right-click in Zone 3 unpins; right-click in Zone 4 pins. Hover tooltip on all pinnable entries: *"Rechtsklick: Als Favorit anheften / lösen"* (Right-click to pin / unpin as favorite). Add Row / Remove Row are immune — right-click has no effect on them.
   - On unpin (from Zone 3): scroll position in Zone 4 does **not** jump.
   - On unpin: if the entry's group in Zone 4 is collapsed → group **auto-expands** and scrolls to the entry.
   - Persistence: ordered list of FieldKeys in Registry key `PinnedFields` (semicolon-separated, managed by `UiStateStore`).
@@ -204,20 +204,20 @@ Three elements from left to right:
 
   **Group order (fixed):**
 
-  **1. Sonderfunktionen** — always the first group:
-  - Always contains: `Gehrungslücke` (`SPECIAL:MiterGap`).
+  **1. Special Functions** (German label: "Sonderfunktionen") — always the first group:
+  - Always contains: Miter Gap (`"Gehrungslücke"`, `SPECIAL:MiterGap`).
     - **Left-click behavior:** sets the current row's FieldKey to `SPECIAL:MiterGap` AND inserts a new row directly below set to `SPECIAL:FlangeDistance`. If current row count + 1 ≥ MAX\_ROWS (30): **block** the action entirely (do not add either row) and show a status message. After insertion both rows are **independent** — no forced pairing, no lock — user can change or remove either row freely.
     - `SPECIAL:FlangeDistance` is **not listed** in the catalog (not selectable as a new entry). Existing rows with this FieldKey continue to display correctly (backward compatibility). Code marked `// DEPRECATED` — remove when explicitly confirmed.
   - Also contains: all Logic Constructor groups (`SPECIAL:LOGIC:`) where at least one Card or Basic Logic is **active** (toggled on). Label: `S: <GroupLabel>` with `S:` in red.
-  - **Auto-collapse rule:** when all Logic Constructor groups have every Card and Basic Logic deactivated, only `Gehrungslücke` remains → group **auto-collapses** and the collapse chevron is **disabled** (user cannot expand manually). The group header label remains visible as a hint. When at least one LC group becomes active again: group auto-expands and chevron re-enables. (Confirmed 2026-05-21.)
+  - **Auto-collapse rule:** when all Logic Constructor groups have every Card and Basic Logic deactivated, only Miter Gap ("Gehrungslücke") remains → group **auto-collapses** and the collapse chevron is **disabled** (user cannot expand manually). The group header label remains visible as a hint. When at least one LC group becomes active again: group auto-expands and chevron re-enables. (Confirmed 2026-05-21.)
 
-  **2. Benutzerdefinierte iProperties** (Grp\_iPropertiesCustom)
-  **3. Benutzerparameter** (Grp\_ParamUser)
+  **2. User-Defined iProperties** (German: "Benutzerdefinierte iProperties", Grp\_iPropertiesCustom)
+  **3. User Parameters** (German: "Benutzerparameter", Grp\_ParamUser)
   **4. iProperties** (Grp\_iProperties)
-  **5. Dokument** (Grp\_Document)
-  **6. Modellparameter** (Grp\_ParamModel)
+  **5. Document** (German: "Dokument", Grp\_Document)
+  **6. Model Parameters** (German: "Modellparameter", Grp\_ParamModel)
 
-  > Note: `Blechteile` (Grp\_SheetMetal) group is removed — `SPECIAL:MiterGap` moved to Sonderfunktionen; `SPECIAL:FlangeDistance` deprecated (hidden from catalog).
+  > Note: Sheet Metal Parts group (German: "Blechteile", Grp\_SheetMetal) is removed — `SPECIAL:MiterGap` moved to Special Functions; `SPECIAL:FlangeDistance` deprecated (hidden from catalog).
 
   Within each group: entries sorted **alphabetically in natural order** (numbers treated numerically, e.g. `d2` before `d10`).
 - **Value Field:** spans the full available width between the Row Drag Handle (left) and the Field Selector (right) — width is independent of the displayed text length. Modes and sub-elements:
@@ -307,11 +307,11 @@ Three groups from left to right. Buttons auto-size to their label text; groups n
 
 ### 5.3 Presets
 
-Three named preset buttons (Bauteil, Baugruppe, Gehrungslücke) stored in `Checkup_Settings.json`.
+Three named preset buttons stored in `Checkup_Settings.json`. Default names: Part (German: "Bauteil"), Assembly (German: "Baugruppe"), Miter Gap (German: "Gehrungslücke"). Names are user-configurable.
 
-- Button order left→right: Bauteil (sheet metal part fields), Baugruppe (assembly fields), Gehrungslücke (Description + key fields + MiterGap/FlangeDistance).
+- Button order left→right: Part / "Bauteil" (sheet metal part fields), Assembly / "Baugruppe" (assembly fields), Miter Gap / "Gehrungslücke" (Description + key fields + MiterGap/FlangeDistance).
 - Exact field lists are maintained in `Checkup_Settings.json` and change over time — do not hardcode field counts here.
-- Fresh window / Reset loads Preset 1 (Bauteil); falls back to MiterGap/FlangeDistance pair if presets are empty.
+- Fresh window / Reset loads Preset 1 (Part / "Bauteil"); falls back to MiterGap/FlangeDistance pair if presets are empty.
 - `PresetsManager` handles load/save/reset; `UiStateStore` remembers active preset index.
 
 **Active preset indicator — Option C (border + background tint):**
@@ -446,7 +446,7 @@ Every UI string uses `{DynamicResource KeyName}` — never a literal string. Swi
 
 ### 5.6 Style Purger
 
-Triggered by "Stile Bereinigen" button.
+Triggered by the "Stile Bereinigen" (Clean Styles) button.
 
 - Config in `Checkup_Settings.json` → `StylePurgeSection`.
 - **IDW:** update → copy template resources → delete obsolete symbols → fix dimension alignment → loop purge until stable.
@@ -570,7 +570,7 @@ After a user unlocks a UNC file (scenario 1), a sync gap can develop:
 - The store loads both versions (UNC + AppData for the same ID) and compares `LastUpdated` timestamps.
 - If the UNC/distribution version is **newer** than the AppData copy: 
   - The 💾 list item gains an **⚠ badge** (or similar visual indicator).
-  - The **Lock/Unlock button is hidden** and replaced in the same position by an **"Update" / "Aktualisieren"** button. The location icon (💾 / 🌐) is incorporated directly into this button.
+  - The **Lock/Unlock button is hidden** and replaced in the same position by an **"Update"** (German: "Aktualisieren") button. The location icon (💾 / 🌐) is incorporated directly into this button.
   - Clicking Update shows a **popup message (InfoDialog with Cancel)** (InfoDialog or equivalent) that explains exactly what will happen: *"Your local copy will be removed. The updated shared version will be active the next time you start the add-in. Restart Inventor to apply."* — OK / Cancel buttons.
   - On OK: the AppData copy is deleted. The UNC version is now the live copy for this session; it becomes the only copy on next startup.
 - **Inventor restart required:** the CatalogStore and CapabilityStore are loaded once at `StandardAddInServer.Activate()`. There is no dynamic in-session reload. The popup must make this clear.
@@ -1081,7 +1081,7 @@ Expert groups are groups with `CardGroup.IsExpert = true`. During `DoRefreshCore
 
 3. **Kahn's topological sort:** queue-based; nodes with zero in-degree go first. Any node still unreachable after the queue drains is in a cycle.
 
-4. **Cycle handling:** cyclic groups → `row.DisplayValue = LanguageLoader.Get("Cycle_DisplayLabel")` (= `"⚠ Zirkelschluss"`) + `row.ValueForeground = Brushes.Red` + `row.IsExpertPendingApply = false` + `row.ExpertComputedValue = null`. Logged to DiagLogger area `"expertmode"`. No write to Inventor.
+4. **Cycle handling:** cyclic groups → `row.DisplayValue = LanguageLoader.Get("Cycle_DisplayLabel")` (= `"⚠ Zirkelschluss"`, German for "Circular Reference") + `row.ValueForeground = Brushes.Red` + `row.IsExpertPendingApply = false` + `row.ExpertComputedValue = null`. Logged to DiagLogger area `"expertmode"`. No write to Inventor.
 
 5. **Evaluate in topo order:** `FormulaEngine.Evaluate(formula, ctx)` where `InputValue = ""` and `ResolveFieldValue` reads from `Rows` in memory (including values already updated by earlier Expert groups in the same pass). Only `row.DisplayValue` is updated — no write to Inventor.
 
@@ -1662,7 +1662,7 @@ Alphabetical quick-reference. Every term used in this TDD, conversations, and co
 | **Miter Gap**           | Editable sheet metal value; locked pair with Flange Distance                                                                                                                                                                                                                                               |
 | **MultiPick Card**      | Card enabling multi-token input with per-separator autocomplete                                                                                                                                                                                                                                            |
 | **Picker Window**       | Full window (not popup) for browsing and selecting catalog entries — opened from a **Button card** row. `SpeziBaukastenPickerWindow` is the legacy variant (used by old `SPECIAL:Spezi1/2` rows). `CatalogPickerWindow` is the Logic Constructor variant.                                                            |
-| **Preset**              | Named saved row-layout configuration (Bauteil, Baugruppe, Gehrungslücke)                                                                                                                                                                                                                                   |
+| **Preset**              | Named saved row-layout configuration. Default names: Part / Assembly / Miter Gap (German: "Bauteil" / "Baugruppe" / "Gehrungslücke")                                                                                                                                                                                                                                   |
 | **Reset**               | Returns window to factory size, reloads default preset, AND clears persisted Logic Constructor panel states (via `UiStateStore.ClearCatalogBuilderPanelStates()`). After Reset, the next Logic Constructor open uses factory defaults: Cards=open, Basic Logics=closed.                                                                                                                                                                                                                          |
 | **Row**                 | One configurable entry in the main grid: Field Selector + Value Field pair                                                                                                                                                                                                                                 |
 | **Source Object**       | The Inventor document(s) currently being read (active IPT or selected component(s))                                                                                                                                                                                                                        |
