@@ -27,8 +27,8 @@ Exported_*_Presets.json
 # ── Test / sample data with company-specific content ──────────────────────────
 **/Resources/Test_Spezifik.*
 
-# ── Dotfuscator output ─────────────────────────────────────────────────────────
-**/Dotfuscator/Dotfuscated/
+# ── Dotfuscator (config and output — not for public repo) ─────────────────────
+**/Dotfuscator/
 
 # ── Claude Code files (internal development tooling — not for public repo) ─────
 **/.claude/
