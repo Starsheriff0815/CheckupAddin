@@ -858,7 +858,7 @@ namespace CheckupAddIn.ViewModels
             string path = PickCapSetSaveFile?.Invoke();
             if (string.IsNullOrEmpty(path)) return;
             try { _capStore?.ExportSet(_selectedCapabilitySet, path); }
-            catch { }
+            catch (Exception ex) { DiagLogger.Log("catalog", $"ExportCapSet failed: {DiagLogger.S(ex.Message)}"); }
         }
 
         private void ImportCapSet()
@@ -872,7 +872,7 @@ namespace CheckupAddIn.ViewModels
                 CapabilitySets.Add(s);
                 SelectedCapabilitySet = s;
             }
-            catch { }
+            catch (Exception ex) { DiagLogger.Log("catalog", $"ImportCapSet failed: {DiagLogger.S(ex.Message)}"); }
         }
 
         // ── Group management ──
