@@ -30,5 +30,6 @@ Exported_*_Presets.json
 # ── Dotfuscator output ─────────────────────────────────────────────────────────
 **/Dotfuscator/Dotfuscated/
 
-# ── Claude Code local settings ─────────────────────────────────────────────────
+# ── Claude Code files (internal development tooling — not for public repo) ─────
 **/.claude/
+CLAUDE.md
