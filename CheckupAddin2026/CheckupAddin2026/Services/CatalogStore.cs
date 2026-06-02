@@ -126,7 +126,7 @@ namespace CheckupAddIn.Services
                     _filePaths[catalog.Id] = filePath;
                 }
             }
-            catch { }
+            catch (Exception ex) { DiagLogger.Log("catalog", $"LoadFile failed '{filePath}': {DiagLogger.S(ex.Message)}"); }
         }
 
         /// <summary>
@@ -191,7 +191,7 @@ namespace CheckupAddIn.Services
                 File.WriteAllText(newPath, json, System.Text.Encoding.UTF8);
                 _filePaths[catalog.Id] = newPath;
             }
-            catch { }
+            catch (Exception ex) { DiagLogger.Log("catalog", $"Save failed for '{catalog?.Name}': {DiagLogger.S(ex.Message)}"); }
         }
 
         /// <summary>

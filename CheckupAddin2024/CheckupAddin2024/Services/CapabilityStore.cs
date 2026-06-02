@@ -129,7 +129,7 @@ namespace CheckupAddIn.Services
                     _filePaths[set.Id] = filePath;
                 }
             }
-            catch { }
+            catch (Exception ex) { DiagLogger.Log("caps", "LoadFile failed '" + filePath + "': " + DiagLogger.S(ex.Message)); }
         }
 
         private void MigrateFromLegacy(string legacyPath)
@@ -249,7 +249,7 @@ namespace CheckupAddIn.Services
                 File.WriteAllText(newPath, json, System.Text.Encoding.UTF8);
                 _filePaths[set.Id] = newPath;
             }
-            catch { }
+            catch (Exception ex) { DiagLogger.Log("caps", "Save failed for '" + (set != null ? set.Name : "") + "': " + DiagLogger.S(ex.Message)); }
         }
 
         /// <summary>

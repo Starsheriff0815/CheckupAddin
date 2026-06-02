@@ -43,6 +43,8 @@ namespace CheckupAddIn.Models
         /// </summary>
         public IReadOnlyList<string> AllowedValues { get; }
 
+        public bool IsSpecialEntry => Key.StartsWith("SPECIAL:LOGIC:", StringComparison.Ordinal);
+
         public FieldItem(string key, string dropText, string rowLabel,
                          string groupName = "", bool isWritable = false, bool isActionItem = false,
                          IReadOnlyList<string> allowedValues = null)
