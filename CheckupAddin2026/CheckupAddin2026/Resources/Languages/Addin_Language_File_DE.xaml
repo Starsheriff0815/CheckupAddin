@@ -24,11 +24,14 @@
     <sys:String x:Key="Tip_Cancel">Abbrechen (Esc)</sys:String>
 
     <sys:String x:Key="Menu_SavePreset">Aktuellen Stand in diesem Preset speichern</sys:String>
-    <sys:String x:Key="Menu_ExportPresets">Presets exportieren...</sys:String>
-    <sys:String x:Key="Menu_ImportPresets">Presets importieren...</sys:String>
+    <sys:String x:Key="Menu_ExportPreset">Dieses Preset exportieren...</sys:String>
+    <sys:String x:Key="Menu_ExportAllPresets">Alle Presets exportieren...</sys:String>
+    <sys:String x:Key="Menu_ImportPreset">Preset importieren...</sys:String>
 
     <sys:String x:Key="Dlg_SavePreset_Title">Preset speichern</sys:String>
     <sys:String x:Key="Dlg_SavePreset_Label">Preset benennen:</sys:String>
+    <sys:String x:Key="Dlg_PresetPicker_Title">Preset importieren</sys:String>
+    <sys:String x:Key="Dlg_PresetPicker_Label">Welches Preset importieren?</sys:String>
 
     <sys:String x:Key="Grp_Special">Sonderfunktionen</sys:String>
     <sys:String x:Key="Grp_SheetMetal">Blech</sys:String>
@@ -67,9 +70,10 @@
     <sys:String x:Key="Msg_WriteErrors">Schreibfehler: {0} Dokument(e) fehlgeschlagen.</sys:String>
     <sys:String x:Key="Msg_PresetApplied">Preset '{0}' angewendet – {1}</sys:String>
     <sys:String x:Key="Msg_PresetSaved">Preset '{0}' gespeichert – {1}</sys:String>
-    <sys:String x:Key="Msg_PresetsExported">Presets exportiert – {0}</sys:String>
+    <sys:String x:Key="Msg_PresetExported">Preset '{0}' exportiert – {1}</sys:String>
+    <sys:String x:Key="Msg_AllPresetsExported">Alle Presets exportiert – {0}</sys:String>
     <sys:String x:Key="Msg_ExportFailed">Export fehlgeschlagen: {0}</sys:String>
-    <sys:String x:Key="Msg_PresetsImported">Presets importiert – {0}</sys:String>
+    <sys:String x:Key="Msg_PresetImported">Preset '{0}' importiert – {1}</sys:String>
     <sys:String x:Key="Msg_ImportFailed">Import fehlgeschlagen: {0}</sys:String>
     <sys:String x:Key="Msg_ResetDone">Zurückgesetzt – {0}</sys:String>
     <sys:String x:Key="Msg_NoDocForWrite">Kein Dokument verfügbar.</sys:String>

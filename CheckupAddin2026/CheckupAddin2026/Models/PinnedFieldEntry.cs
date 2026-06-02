@@ -10,7 +10,8 @@ namespace CheckupAddIn.Models
         /// <summary>False when the field key is not present in the current document's catalog — renders as strikethrough.</summary>
         public bool      IsAvailable { get; init; }
 
-        public string Key     => Item?.Key     ?? "";
-        public string DropText => Item?.DropText ?? "";
+        public string Key          => Item?.Key          ?? "";
+        public string DropText    => Item?.DropText    ?? "";
+        public bool   IsSpecialEntry => Item?.IsSpecialEntry ?? false;
     }
 }

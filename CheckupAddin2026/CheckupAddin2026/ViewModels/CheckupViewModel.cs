@@ -2474,35 +2474,57 @@ namespace CheckupAddIn.ViewModels
             StatusMessage = string.Format(LanguageLoader.Get("Msg_PresetSaved"), name, DateTime.Now.ToString("HH:mm:ss"));
         }
 
-        public void ExportPresets(string path)
+        public void ExportPreset(int slotIndex, string path)
         {
             try
             {
-                _presetsManager.ExportToFile(path);
-                StatusMessage = string.Format(LanguageLoader.Get("Msg_PresetsExported"), DateTime.Now.ToString("HH:mm:ss"));
+                _presetsManager.ExportPresetToLibrary(_presets[slotIndex], path);
+                StatusMessage = string.Format(LanguageLoader.Get("Msg_PresetExported"),
+                    _presets[slotIndex].Name, DateTime.Now.ToString("HH:mm:ss"));
             }
             catch (Exception ex)
             {
-                StatusMessage = string.Format(LanguageLoader.Get("Msg_ExportFailed"), ex.Message);
+                StatusMessage = string.Format(LanguageLoader.Get("Msg_ExportFailed"), DiagLogger.S(ex.Message));
             }
         }
 
-        public void ImportPresets(string path)
+        public void ExportAllPresets(string path)
         {
             try
             {
-                var imported = _presetsManager.ImportFromFile(path);
-                _presets = imported;
-                Preset1Name = _presets[0].Name;
-                Preset2Name = _presets[1].Name;
-                Preset3Name = _presets[2].Name;
-                ApplyPreset(0);
-                StatusMessage = string.Format(LanguageLoader.Get("Msg_PresetsImported"), DateTime.Now.ToString("HH:mm:ss"));
+                _presetsManager.ExportAllPresetsToLibrary(_presets, path);
+                StatusMessage = string.Format(LanguageLoader.Get("Msg_AllPresetsExported"), DateTime.Now.ToString("HH:mm:ss"));
             }
             catch (Exception ex)
             {
-                StatusMessage = string.Format(LanguageLoader.Get("Msg_ImportFailed"), ex.Message);
+                StatusMessage = string.Format(LanguageLoader.Get("Msg_ExportFailed"), DiagLogger.S(ex.Message));
             }
+        }
+
+        public List<PresetData> ReadLibraryPresets(string path)
+        {
+            try
+            {
+                return _presetsManager.ReadLibrary(path);
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = string.Format(LanguageLoader.Get("Msg_ImportFailed"), DiagLogger.S(ex.Message));
+                return null;
+            }
+        }
+
+        public void ImportPresetIntoSlot(int slotIndex, PresetData data)
+        {
+            _presets[slotIndex] = new PresetData { Name = data.Name, FieldKeys = new List<string>(data.FieldKeys) };
+            _presetsManager.Save(_presets);
+            if (slotIndex == 0) Preset1Name = _presets[0].Name;
+            else if (slotIndex == 1) Preset2Name = _presets[1].Name;
+            else Preset3Name = _presets[2].Name;
+            int activeIdx = UiStateStore.LoadActivePresetIndex();
+            if (activeIdx == slotIndex) ApplyPreset(slotIndex);
+            StatusMessage = string.Format(LanguageLoader.Get("Msg_PresetImported"),
+                data.Name, DateTime.Now.ToString("HH:mm:ss"));
         }
 
         // ══════════════════════════════════════════════

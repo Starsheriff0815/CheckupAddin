@@ -215,7 +215,7 @@ namespace CheckupAddIn.Services
 
             // ── Logic Sets: each Card Group with a TargetFieldKey gets a SPECIAL:LOGIC:{group.Id} entry ──
             // These appear in the Special group.
-            // The label is "S: " + the target field's display name so users can identify what is augmented.
+            // S: prefix is rendered in red by XAML via IsSpecialEntry; DropText holds only the label text.
             if (_capStore != null)
             {
                 foreach (var cs in _capStore.CapabilitySets)
@@ -232,9 +232,8 @@ namespace CheckupAddIn.Services
                         // Append group name when a CapabilitySet has multiple groups
                         if (cs.Groups.Count > 1 && !string.IsNullOrEmpty(group.Name))
                             targetLabel = targetLabel + " · " + group.Name;
-                        // V1 Expert Mode: ⚡ between "S: " prefix and the label text
-                        string rowLabel = group.IsExpert ? "S: ⚡ " + targetLabel : "S: " + targetLabel;
-                        items.Add(new FieldItem(key, rowLabel, targetLabel, GRP_SPECIAL, isWritable: true));
+                        string dropText = group.IsExpert ? "⚡ " + targetLabel : targetLabel;
+                        items.Add(new FieldItem(key, dropText, targetLabel, GRP_SPECIAL, isWritable: true));
                     }
                 }
             }

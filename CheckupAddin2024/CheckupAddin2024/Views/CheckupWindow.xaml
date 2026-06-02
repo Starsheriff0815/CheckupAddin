@@ -373,9 +373,9 @@
                             <DataTrigger Binding="{Binding RelativeSource={RelativeSource TemplatedParent}, Path=SelectionBoxItem}" Value="{x:Null}">
                                 <Setter TargetName="FallbackLabelContainer" Property="Visibility" Value="Visible"/>
                             </DataTrigger>
-                            <!-- Field is set but not present in the current document: struck-through italic label -->
+                            <!-- Field is set but not present in the current document: greyed out + struck-through italic label -->
                             <DataTrigger Binding="{Binding IsFieldMissing}" Value="True">
-                                <Setter TargetName="FallbackLabel" Property="Foreground"       Value="{DynamicResource CheckupPrimaryText}"/>
+                                <Setter TargetName="FallbackLabel" Property="Foreground"       Value="{DynamicResource CheckupSecondaryText}"/>
                                 <Setter TargetName="FallbackLabel" Property="TextDecorations"  Value="Strikethrough"/>
                                 <Setter TargetName="FallbackLabel" Property="FontStyle"        Value="Italic"/>
                             </DataTrigger>
@@ -596,8 +596,10 @@
                                 <MenuItem Header="{DynamicResource Menu_SavePreset}"
                                           Tag="0" Click="SavePreset_Click"/>
                                 <Separator/>
-                                <MenuItem Header="{DynamicResource Menu_ExportPresets}" Click="ExportPresets_Click"/>
-                                <MenuItem Header="{DynamicResource Menu_ImportPresets}" Click="ImportPresets_Click"/>
+                                <MenuItem Header="{DynamicResource Menu_ExportPreset}"    Tag="0" Click="ExportPreset_Click"/>
+                                <MenuItem Header="{DynamicResource Menu_ExportAllPresets}" Click="ExportAllPresets_Click"/>
+                                <Separator/>
+                                <MenuItem Header="{DynamicResource Menu_ImportPreset}"    Tag="0" Click="ImportPreset_Click"/>
                             </ContextMenu>
                         </Button.ContextMenu>
                     </Button>
@@ -633,8 +635,10 @@
                                 <MenuItem Header="{DynamicResource Menu_SavePreset}"
                                           Tag="1" Click="SavePreset_Click"/>
                                 <Separator/>
-                                <MenuItem Header="{DynamicResource Menu_ExportPresets}" Click="ExportPresets_Click"/>
-                                <MenuItem Header="{DynamicResource Menu_ImportPresets}" Click="ImportPresets_Click"/>
+                                <MenuItem Header="{DynamicResource Menu_ExportPreset}"    Tag="1" Click="ExportPreset_Click"/>
+                                <MenuItem Header="{DynamicResource Menu_ExportAllPresets}" Click="ExportAllPresets_Click"/>
+                                <Separator/>
+                                <MenuItem Header="{DynamicResource Menu_ImportPreset}"    Tag="1" Click="ImportPreset_Click"/>
                             </ContextMenu>
                         </Button.ContextMenu>
                     </Button>
@@ -670,8 +674,10 @@
                                 <MenuItem Header="{DynamicResource Menu_SavePreset}"
                                           Tag="2" Click="SavePreset_Click"/>
                                 <Separator/>
-                                <MenuItem Header="{DynamicResource Menu_ExportPresets}" Click="ExportPresets_Click"/>
-                                <MenuItem Header="{DynamicResource Menu_ImportPresets}" Click="ImportPresets_Click"/>
+                                <MenuItem Header="{DynamicResource Menu_ExportPreset}"    Tag="2" Click="ExportPreset_Click"/>
+                                <MenuItem Header="{DynamicResource Menu_ExportAllPresets}" Click="ExportAllPresets_Click"/>
+                                <Separator/>
+                                <MenuItem Header="{DynamicResource Menu_ImportPreset}"    Tag="2" Click="ImportPreset_Click"/>
                             </ContextMenu>
                         </Button.ContextMenu>
                     </Button>
@@ -1150,11 +1156,81 @@
                                                 <ColumnDefinition Width="*"/>
                                                 <ColumnDefinition Width="16"/>
                                             </Grid.ColumnDefinitions>
+                                            <!-- Normal label: field exists and is not a Special row -->
                                             <TextBlock Grid.Column="0"
                                                        Text="{Binding SelectedField.DropText}"
                                                        FontSize="11"
                                                        VerticalAlignment="Center"
-                                                       TextTrimming="CharacterEllipsis"/>
+                                                       TextTrimming="CharacterEllipsis">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsFieldMissing}" Value="True">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding IsSpecialRow}" Value="True">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <!-- Fallback/Special label: shown when field is missing or is a Special row -->
+                                            <Grid Grid.Column="0" VerticalAlignment="Center">
+                                                <Grid.Style>
+                                                    <Style TargetType="Grid">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsFieldMissing}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding IsSpecialRow}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Grid.Style>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <!-- S: prefix — only for Special rows -->
+                                                <TextBlock Grid.Column="0"
+                                                           Text="S: "
+                                                           FontSize="11"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource CheckupErrorText}"
+                                                           VerticalAlignment="Center">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsSpecialRow}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                                <!-- Field label — greyed + strikethrough when missing -->
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding FieldLabel}"
+                                                           FontSize="11"
+                                                           VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsFieldMissing}" Value="True">
+                                                                    <Setter Property="Foreground" Value="{DynamicResource CheckupSecondaryText}"/>
+                                                                    <Setter Property="TextDecorations" Value="Strikethrough"/>
+                                                                    <Setter Property="FontStyle" Value="Italic"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </Grid>
                                             <Path Grid.Column="1"
                                                   IsHitTestVisible="False"
                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -1307,13 +1383,23 @@
                                                                         <Button.Template>
                                                                             <ControlTemplate TargetType="Button">
                                                                                 <Border Background="Transparent">
-                                                                                    <TextBlock x:Name="txt"
-                                                                                               Text="{Binding DropText}"
-                                                                                               FontSize="11"
-                                                                                               Foreground="{DynamicResource CheckupPrimaryText}"
-                                                                                               Padding="2,3,6,3"/>
+                                                                                    <StackPanel Orientation="Horizontal" Margin="2,3,6,3">
+                                                                                        <TextBlock x:Name="sTag"
+                                                                                                   Text="S: "
+                                                                                                   FontSize="11"
+                                                                                                   FontWeight="SemiBold"
+                                                                                                   Foreground="{DynamicResource CheckupErrorText}"
+                                                                                                   Visibility="Collapsed"/>
+                                                                                        <TextBlock x:Name="txt"
+                                                                                                   Text="{Binding DropText}"
+                                                                                                   FontSize="11"
+                                                                                                   Foreground="{DynamicResource CheckupPrimaryText}"/>
+                                                                                    </StackPanel>
                                                                                 </Border>
                                                                                 <ControlTemplate.Triggers>
+                                                                                    <DataTrigger Binding="{Binding IsSpecialEntry}" Value="True">
+                                                                                        <Setter TargetName="sTag" Property="Visibility" Value="Visible"/>
+                                                                                    </DataTrigger>
                                                                                     <DataTrigger Binding="{Binding IsAvailable}" Value="False">
                                                                                         <Setter TargetName="txt" Property="TextDecorations" Value="Strikethrough"/>
                                                                                         <Setter TargetName="txt" Property="Foreground" Value="{DynamicResource CheckupSecondaryText}"/>
@@ -1404,15 +1490,26 @@
                                                                                                                    Stroke="{DynamicResource CheckupSeparator}"
                                                                                                                    StrokeThickness="1" StrokeDashArray="1 2"
                                                                                                                    SnapsToDevicePixels="True"/>
-                                                                                                        <TextBlock Text="{Binding DropText}" FontSize="11"
-                                                                                                                   Foreground="{DynamicResource CheckupPrimaryText}"
-                                                                                                                   Padding="14,3,6,2"/>
+                                                                                                        <StackPanel Orientation="Horizontal" Margin="14,3,6,2">
+                                                                                                            <TextBlock x:Name="sTag"
+                                                                                                                       Text="S: "
+                                                                                                                       FontSize="11"
+                                                                                                                       FontWeight="SemiBold"
+                                                                                                                       Foreground="{DynamicResource CheckupErrorText}"
+                                                                                                                       Visibility="Collapsed"/>
+                                                                                                            <TextBlock Text="{Binding DropText}"
+                                                                                                                       FontSize="11"
+                                                                                                                       Foreground="{DynamicResource CheckupPrimaryText}"/>
+                                                                                                        </StackPanel>
                                                                                                     </DockPanel>
                                                                                                 </Border>
                                                                                                 <ControlTemplate.Triggers>
                                                                                                     <Trigger Property="IsMouseOver" Value="True">
                                                                                                         <Setter TargetName="bdr" Property="Background" Value="{DynamicResource CheckupComboItemHoverBackground}"/>
                                                                                                     </Trigger>
+                                                                                                    <DataTrigger Binding="{Binding IsSpecialEntry}" Value="True">
+                                                                                                        <Setter TargetName="sTag" Property="Visibility" Value="Visible"/>
+                                                                                                    </DataTrigger>
                                                                                                 </ControlTemplate.Triggers>
                                                                                             </ControlTemplate>
                                                                                         </Button.Template>

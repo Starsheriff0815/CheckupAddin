@@ -91,30 +91,49 @@ namespace CheckupAddIn.Services
         }
 
         /// <summary>
-        /// Writes the currently saved presets to a JSON file at <paramref name="path"/>.
+        /// Upserts <paramref name="preset"/> into the library file at <paramref name="path"/> by Name.
+        /// Existing file: match by name → overwrite; no match → append. New file: create with one entry.
         /// Throws on I/O error — caller should catch and show a message.
         /// </summary>
-        public void ExportToFile(string path)
+        public void ExportPresetToLibrary(PresetData preset, string path)
         {
-            var presets = Load();
-            string json = JsonConvert.SerializeObject(presets, Formatting.Indented);
-            File.WriteAllText(path, json, Encoding.UTF8);
+            var library = File.Exists(path) ? ReadLibrary(path) : new List<PresetData>();
+            int idx = library.FindIndex(p => string.Equals(p.Name, preset.Name, StringComparison.OrdinalIgnoreCase));
+            if (idx >= 0) library[idx] = preset; else library.Add(preset);
+            WriteLibrary(library, path);
         }
 
         /// <summary>
-        /// Reads presets from a JSON file, validates that it contains exactly 3 entries,
-        /// saves them to the registry, and returns the imported list.
-        /// Throws <see cref="InvalidOperationException"/> if the file is invalid.
+        /// Upserts all entries in <paramref name="presets"/> into the library file at <paramref name="path"/>.
         /// Throws on I/O error — caller should catch and show a message.
         /// </summary>
-        public List<PresetData> ImportFromFile(string path)
+        public void ExportAllPresetsToLibrary(List<PresetData> presets, string path)
+        {
+            var library = File.Exists(path) ? ReadLibrary(path) : new List<PresetData>();
+            foreach (var preset in presets)
+            {
+                int idx = library.FindIndex(p => string.Equals(p.Name, preset.Name, StringComparison.OrdinalIgnoreCase));
+                if (idx >= 0) library[idx] = preset; else library.Add(preset);
+            }
+            WriteLibrary(library, path);
+        }
+
+        /// <summary>
+        /// Reads all preset entries from a library file.
+        /// Throws <see cref="InvalidOperationException"/> if the file cannot be parsed.
+        /// Throws on I/O error — caller should catch and show a message.
+        /// </summary>
+        public List<PresetData> ReadLibrary(string path)
         {
             string json = File.ReadAllText(path, Encoding.UTF8);
-            var imported = JsonConvert.DeserializeObject<List<PresetData>>(json);
-            if (imported == null || imported.Count != 3)
-                throw new InvalidOperationException("File must contain exactly 3 presets.");
-            Save(imported);
-            return imported;
+            var library = JsonConvert.DeserializeObject<List<PresetData>>(json);
+            if (library == null) throw new InvalidOperationException("File is not a valid preset library.");
+            return library;
+        }
+
+        private void WriteLibrary(List<PresetData> library, string path)
+        {
+            File.WriteAllText(path, JsonConvert.SerializeObject(library, Formatting.Indented), Encoding.UTF8);
         }
 
         /// <summary>Returns a deep copy of the factory defaults (safe to mutate).</summary>

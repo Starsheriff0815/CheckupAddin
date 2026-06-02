@@ -205,7 +205,7 @@ namespace CheckupAddIn.Services
                         string targetLabel = targetItem != null ? targetItem.DropText : cs.Name;
                         if (cs.Groups.Count > 1 && !string.IsNullOrEmpty(group.Name))
                             targetLabel = targetLabel + " · " + group.Name;
-                        items.Add(new FieldItem(key, "S: " + targetLabel, targetLabel, GRP_SPECIAL, isWritable: true));
+                        items.Add(new FieldItem(key, targetLabel, targetLabel, GRP_SPECIAL, isWritable: true));
                     }
                 }
             }

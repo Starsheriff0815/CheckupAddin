@@ -268,7 +268,42 @@ Three groups from left to right. Buttons auto-size to their label text; groups n
 
 - Labels (`Preset1Name`, `Preset2Name`, `Preset3Name`) are bound to ViewModel properties — names come from `Checkup_Settings.json`, not hardcoded in XAML.
 - Each button shows a small dot indicator (4×4 `Ellipse`) below the name — indicates the active preset (see code for fill/trigger details).
-- Right-click context menu on each preset button: **Save Preset** / separator / **Export Presets** / **Import Presets**.
+- Right-click context menu on each preset button (5 items):
+
+  | Item | Behavior |
+  |---|---|
+  | **Preset speichern** | Saves the current row layout into the right-clicked slot |
+  | *(separator)* | |
+  | **Preset exportieren** | Exports the right-clicked slot into a preset library file (see below) |
+  | **Alle Presets exportieren** | Exports all 3 slots into a preset library file in one pass |
+  | *(separator)* | |
+  | **Preset importieren…** | Opens a library file, shows a picker dialog listing all presets in the file; imports the chosen one into the right-clicked slot |
+
+**Preset library file format:**
+
+A plain JSON file containing a `List<PresetData>` (any number of entries — not limited to 3). Each entry has `Name` (string) and `FieldKeys` (string list). The same file format is used for all export and import operations. The file can grow into a personal library over time and can be synced between machines.
+
+**Export behavior (single and all):**
+
+- A `SaveFileDialog` is shown (filter: `*.json`).
+- If the chosen file already exists: the file is read first; each preset being exported is matched by `Name` — overwritten if a match is found, appended as a new entry if not. Existing entries with non-matching names are preserved.
+- If the file does not exist: it is created with the exported presets as the initial entries.
+
+**Import behavior:**
+
+- An `OpenFileDialog` is shown (filter: `*.json`).
+- The chosen file is read and all `Name` values are extracted.
+- A **`PresetPickerDialog`** opens, listing the preset names in a `ListBox`. OK is disabled until the user selects one entry. ESC or Cancel closes without importing.
+- The selected preset is loaded into the right-clicked slot only. All other slots are untouched.
+- The slot's name and field keys are replaced; the active preset indicator updates if the modified slot is currently active.
+
+**PresetPickerDialog:**
+
+- Small themed window (same visual style as `InputDialog`): title, prompt label, `ListBox`, OK / Cancel buttons.
+- Default size: 320 × 260 px; `MinWidth="280" MinHeight="180"`; `ResizeMode="CanResize"`; `WindowStartupLocation="CenterOwner"`. Size persisted via `UiStateStore.SaveInfoDialogSize("PresetPicker", ...)` / `TryLoadInfoDialogSize("PresetPicker", ...)` — follows §5.11.
+- `ListBox` uses `ScrollViewer.CanContentScroll="False"` for pixel-smooth scrolling.
+- OK enabled only when `ListBox.SelectedItem != null`; double-click also confirms; ESC cancels.
+- Language keys: `Dlg_PresetPicker_Title`, `Dlg_PresetPicker_Label`.
 
 **Multi-select visual indicator:**
 
@@ -1717,6 +1752,30 @@ When contributing code, observe the following rules:
 ## 13. Change History
 
 Development sessions in reverse chronological order. This section is the authoritative history log — the main TDD sections describe the current state only, not when things changed.
+
+### 2026-06-02 — Task #22 Preset Library; Task #23 Field Selector labels; audit
+
+Both 2024 and 2026 updated. Both build 0 errors / 0 warnings.
+
+**Task #22 — Preset Save / Import / Export rework (§5.3):**
+- Preset library file format: `List<PresetData>` JSON, any number of entries, grows over time as a personal library.
+- Export single / Export all: upsert by name (overwrite if name exists, append if new). `PresetsManager`: new `ExportPresetToLibrary`, `ExportAllPresetsToLibrary`, `ReadLibrary` methods; old `ExportToFile` / `ImportFromFile` removed.
+- Import: OpenFileDialog → reads all preset names → `PresetPickerDialog` → user selects one → loads into right-clicked slot only.
+- `PresetPickerDialog`: new themed dialog (resizable, size-persisted, smooth scrolling — see §5.3 for spec).
+- Context menu updated: 5 items (Save / sep / Export single / Export all / sep / Import).
+- Language keys added to all 4 language files (DE+EN, 2024+2026): `Menu_ExportPreset`, `Menu_ExportAllPresets`, `Menu_ImportPreset`, `Dlg_PresetPicker_Title`, `Dlg_PresetPicker_Label`, `Msg_PresetExported`, `Msg_AllPresetsExported`, `Msg_PresetImported`.
+- Bug fix: `Btn_Cancel` was `"X"` in all JSON files — corrected to "Abbrechen" (DE) / "Cancel" (EN).
+
+**Task #23 — Field Selector closed-state label visuals (§5.1 implementation gap):**
+- `IsFieldMissing`: field label now shown greyed + strikethrough in the Field Selector header button (was empty). Fixed in Button content Grid using `Style.Triggers` with `Setter` defaults (local attribute `Visibility="Collapsed"` blocks Style.Triggers — must use Style Setter instead).
+- `IsSpecialRow` (SPECIAL:LOGIC:): "S: " prefix shown in red in the closed-state header. Also applied to Zone 3 (Favoriten) and Zone 4 (scrollable groups) dropdown items.
+- `FieldItem.IsSpecialEntry` + `PinnedFieldEntry.IsSpecialEntry` added (both projects). `FieldCatalogBuilder` DropText for SPECIAL:LOGIC: no longer includes "S: " prefix — rendered visually by XAML.
+- Root cause: Field Selector is a custom Button+Popup, NOT a WPF ComboBox — prior ControlTemplate edits went to the wrong control.
+
+**Code Audit §1–10 + File Integrity Audit A–I:**
+- **E1/E4 language parity:** 2026 DE.json was missing new Task #22 `Msg_Preset*` / `Menu_*` keys (still had stale old keys) — German users saw raw key names as status messages. Fixed; all four language files now have identical key sets.
+- **§10.4 CatalogStore + CapabilityStore (both projects):** `LoadFile` and `Save` empty `catch { }` replaced with `catch (Exception ex) { DiagLogger.Log(...) }` — silent save failure now logged.
+- All other audit checks clean: async void, .Wait()/.Result, throw ex, lock(this), logger flags, WIP markers, GUID, StringComparison, I1/I2 parity.
 
 ### 2026-05-29 — R2 Inventor-confirmed; audit fixes; v0.9.8 tagged
 

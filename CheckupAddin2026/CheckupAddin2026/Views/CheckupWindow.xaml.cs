@@ -1002,31 +1002,48 @@ namespace CheckupAddIn.Views
         //  EXPORT / IMPORT PRESETS
         // ══════════════════════════════════════════════
 
-        private void ExportPresets_Click(object sender, RoutedEventArgs e)
+        private void ExportPreset_Click(object sender, RoutedEventArgs e)
+        {
+            if (_vm == null) return;
+            if (sender is not MenuItem mi || !int.TryParse(mi.Tag?.ToString(), out int idx)) return;
+            var dlg = new SaveFileDialog
+            {
+                Filter     = "JSON files (*.json)|*.json|All files (*.*)|*.*",
+                DefaultExt = ".json"
+            };
+            if (dlg.ShowDialog() == true)
+                _vm.ExportPreset(idx, dlg.FileName);
+        }
+
+        private void ExportAllPresets_Click(object sender, RoutedEventArgs e)
         {
             if (_vm == null) return;
             var dlg = new SaveFileDialog
             {
-                Title      = "Export Presets",
                 Filter     = "JSON files (*.json)|*.json|All files (*.*)|*.*",
-                FileName   = "Checkup 2026 Presets.json",
                 DefaultExt = ".json"
             };
             if (dlg.ShowDialog() == true)
-                _vm.ExportPresets(dlg.FileName);
+                _vm.ExportAllPresets(dlg.FileName);
         }
 
-        private void ImportPresets_Click(object sender, RoutedEventArgs e)
+        private void ImportPreset_Click(object sender, RoutedEventArgs e)
         {
             if (_vm == null) return;
+            if (sender is not MenuItem mi || !int.TryParse(mi.Tag?.ToString(), out int idx)) return;
             var dlg = new OpenFileDialog
             {
-                Title      = "Import Presets",
                 Filter     = "JSON files (*.json)|*.json|All files (*.*)|*.*",
                 DefaultExt = ".json"
             };
-            if (dlg.ShowDialog() == true)
-                _vm.ImportPresets(dlg.FileName);
+            if (dlg.ShowDialog() != true) return;
+
+            var library = _vm.ReadLibraryPresets(dlg.FileName);
+            if (library == null) return;
+
+            var picker = new PresetPickerDialog(library) { Owner = this };
+            if (picker.ShowDialog() == true && picker.SelectedPreset != null)
+                _vm.ImportPresetIntoSlot(idx, picker.SelectedPreset);
         }
     }
 }
