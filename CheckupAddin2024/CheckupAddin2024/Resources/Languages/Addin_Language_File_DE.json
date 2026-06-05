@@ -275,6 +275,9 @@
   "Msg_ResetDone": "Zurückgesetzt – {0}",
   "Msg_NoDocForWrite": "Kein Dokument verfügbar.",
 
+  "Dlg_DemoWarning_Title": "Demo-Modus aktiv",
+  "Dlg_DemoWarning_Body":  "Das Add-In läuft mit der Demo-Standardkonfiguration.\n\nDie Demo-Logikgruppen schreiben Werte direkt in das aktive Dokument (Darstellung, Material, Beschreibung usw.). Zum Testen ein neues leeres Dokument verwenden, um echte Dokumente nicht zu verändern.\n\nDieser Hinweis verschwindet, sobald mindestens ein Preset mit einem neuen Namen und einer eigenen Feldkonfiguration gespeichert wurde.\n\nTipp: Rechtsklick auf einen Preset-Button → Preset speichern.",
+
   "CatBuilder_Lbl_Locked":   "Gesperrt — schreibgeschützt",
   "CatBuilder_Lbl_Unlocked": "Entsperrt — bearbeitbar",
   "CatBuilder_Btn_Unlock":   "Entsperren",

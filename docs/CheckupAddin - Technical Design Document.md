@@ -309,6 +309,18 @@ A plain JSON file containing a `List<PresetData>` (any number of entries — not
 
 - Document Name Field text rendered in **red** when ≥ 2 documents are selected (in addition to the comma-separated filename list).
 
+**`IsDemo` flag and demo-mode warning:**
+
+- `PresetData` has an `IsDemo` (bool, default `false`) property. The shipped `Checkup_Settings.json` sets `IsDemo: true` on all three demo presets.
+- `SavePreset()` clears `IsDemo` on the saved slot **only when both** the new name AND the new field keys differ from the demo defaults (`DemoPresetName = "Demo"` / `_demoDefaultFieldKeys`). Rename-only or field-change-only does not clear the flag.
+- `PresetsManager.GetDefaults()` **must copy `IsDemo`** from the factory defaults into the returned copies. Omitting this causes `IsDemo=false` after Reset (since `new PresetData()` defaults to `false`), breaking the primary detection path.
+- The session counter fields (`_demoWindowOpenCount`, `_demoShownThisSession`) are **`static`** — they persist across `CheckupViewModel` instances within the same Inventor session (AppDomain). `StandardAddInServer` creates a new `CheckupViewModel` on each window open; instance fields would reset on every open.
+- **Warning dialog trigger:** `CheckupViewModel.CheckAndShowDemoWarning(Window owner)` is called from `CheckupWindow.OnContentRendered`. It fires a warning `InfoDialog` when `IsDemoActive()` returns true (all 3 presets still have `IsDemo == true`) AND the session frequency rule is met: first window open in the Inventor session always shows the dialog; subsequently every 20th open of the add-in window. The session counter (`_demoWindowOpenCount`) is in-memory only — never persisted.
+- **Reset re-arms the warning:** `ResetToDefaults()` restores the factory demo presets, so it also clears the session flags (`_demoShownThisSession = false`, `_demoWindowOpenCount = 0`). The warning then reappears on the **next window open within the same Inventor session**; without this clear, the static "shown this session" flag would suppress it until the 20th open.
+- **InfoDialog spec:** `contextKey = "DemoWarning"`, `titleKey = "Dlg_DemoWarning_Title"`, default size 440 × 300, no Cancel button. `Owner = CheckupWindow`. Opened via `ShowDialog()` — modal to CheckupWindow. Z-order: stays above Inventor via the Owner chain (CheckupWindow's Owner is Inventor's HWND). `Topmost = false` per §5.11.
+- **Dismissal condition:** The dialog permanently stops appearing once at least one preset has `IsDemo == false` (i.e., the user has saved a preset with both a new name and new field keys).
+- **CAD admin workflow:** An admin who configures company presets and copies them into `Checkup_Settings.json` should set `"IsDemo": false` on each preset entry so end users never see the demo warning.
+
 **⚠ Legacy — Miter Gap / Flange Distance pair:**
 
 These rules apply only to rows still using the legacy `SPECIAL:MiterGap` / `SPECIAL:FlangeDistance` field keys from old presets. These keys cannot be added via the current Field Selector.
@@ -498,7 +510,7 @@ Triggered by the "Stile Bereinigen" (Clean Styles) button.
 
 ### 5.8 Logic Constructor Window
 
-**Window properties:** Title language key `Win_Title_LogicConstructor` (DE: "Logik-Baukasten", EN: "Logics-Constructor"). Default size 1500×1000px; minimum 600×400px. Centers on owner (CheckupWindow). Follows all unified window rules (Section 5.11).
+**Window properties:** Title language key `Win_Title_LogicConstructor` (DE: "Logik-Baukasten", EN: "Logics-Constructor"). Default size 1500×1100px; minimum 600×400px. Centers on owner (CheckupWindow). Follows all unified window rules (Section 5.11).
 
 **Top-level layout:** Three columns — Left panel (260px default, min 180px) | GridSplitter (5px, draggable) | Right panel (fills remaining width).
 
@@ -575,6 +587,8 @@ private static bool IsUncPath(string path)
 | Locked   | "Locked — read-only"  | **Unlock**       | See unlock behavior below              |
 | Unlocked | "Unlocked — editable" | **Lock**         | Sets `IsLocked = true`, saves to AppData |
 
+**Locked-state label color:** the "Locked" status label is rendered in the **error/red color** (`CheckupErrorText`, `FontWeight="SemiBold"`) so the locked state is highly visible; the "Unlocked" label uses the normal secondary text color. Applies to both the Catalog and Capabilities lock strips.
+
 **Unlock behavior — two scenarios depending on source:**
 
 1. **Item is on a UNC path (**`IsOnUncPath == true`**):**
@@ -616,7 +630,7 @@ After a user unlocks a UNC file (scenario 1), a sync gap can develop:
 | Tab          | Mechanism                                                                                                                                           | Visual effect                                                                                                                                                                                                                                                          |
 |--------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Catalogs     | DataGrid `IsReadOnly={IsSelectedCatalogLocked}` only — `IsEnabled` **is NOT used for lock state**                                                           | Cells not editable; DataGrid remains scrollable. Bottom action bar buttons (Add/Remove Row, Add/Remove Column) stay disabled via `IsSelectedCatalogEditable`.                                                                                                            |
-| Capabilities | Transparent hit-test overlay Grid (`ColumnSpan=2`, `Panel.ZIndex=100`) covers groups ScrollViewer + Basic Logics panel + "Add Group \| ▲▼⧉×" bottom bar | Controls appear normal visually; all mouse clicks absorbed silently. Scroll events are re-routed to `CapabilitiesScrollViewer` via `PreviewMouseWheel` handler on the overlay — scrolling remains active. Lock/Unlock strip is in the left panel and is always accessible. |
+| Capabilities | Transparent hit-test overlay Grid (`Panel.ZIndex=100`) scoped to the **groups editing ScrollViewer (Row 1) only** — it covers the TwoWay-bound card-parameter editors, which are not command-gated. The bottom toolbar, Cards palette and Basic Logics buttons are `RelayCommand`s gated by `IsSelectedCapSetEditable` / `HasEditableActiveGroup`, so they disable themselves when locked (the overlay does not need to cover them). | Card editors appear normal but absorb clicks silently; scroll re-routed to `CapabilitiesScrollViewer` via `PreviewMouseWheel`. The **single ℹ Card-Help button in the bottom toolbar stays clickable while locked** (help is read-only — there is no separate lock-strip ℹ button). Lock/Unlock strip in the left panel is always accessible. |
 
 All editing command `CanExecute` predicates check `IsSelectedCatalogEditable` / `IsSelectedCapSetEditable`. **Export** is always available regardless of lock state.
 
@@ -1730,6 +1744,8 @@ Alphabetical quick-reference. Every term used in this TDD, conversations, and co
 | `Spezi_Katalog.csv`                                         | ⚠ Legacy one-time import seed. On first Inventor load the addin imports this CSV into CatalogStore (ID `spezi001`) and never reads it again. Can be removed from the project source once all deployments have completed the one-time import. |
 | `Checkup_Catalogs.json`                                     | Seed catalog data; in project source → copied to bin on build; migrated to AppData on first Inventor load                                                                                                                                  |
 | `Checkup_Capabilities.json`                                 | Seed capability sets; same pattern as Checkup_Catalogs.json                                                                                                                                                                                |
+| `Resources\Demo.catalog.json`                               | Demo / tutorial catalog (100 entries: RAL colors + Inventor materials); copied to `bin\Catalogs\Demo.catalog.json` on build; ID `demo-001-catalog`; `IsLocked: true`                                                                       |
+| `Resources\Demo.capability.json`                            | Demo / tutorial capability set (12 groups — all card types); copied to `bin\Capabilities\Demo.capability.json` on build; ID `demo-001-capabilities`; `IsLocked: true`                                                                     |
 
 ---
 
@@ -1752,6 +1768,19 @@ When contributing code, observe the following rules:
 ## 13. Change History
 
 Development sessions in reverse chronological order. This section is the authoritative history log — the main TDD sections describe the current state only, not when things changed.
+
+### 2026-06-03 — Task #21 Demo/Tutorial Starter Files
+
+Both 2024 and 2026 updated. Both build 0 errors / 0 warnings.
+
+**Task #21 — Demo/Tutorial Starter Files:**
+- `Resources/Demo.catalog.json` (both projects): 100 entries — 80 RAL Classic colors (8 groups: Whites/Creams, Greys, Black, Reds, Yellows/Oranges, Greens, Blues, Browns) + 20 Inventor library materials (5 groups: Steel, Stainless Steel, Aluminum, Copper & Other, Plastics). `IsLocked: true`. Deployed to `bin\Catalogs\` by build.
+- `Resources/Demo.capability.json` (both projects): 12 groups covering all card types — Dropdown, Button, Dropdown+Button, PrefixSuffix, Sort, Link, Sync, BasicLogic, MultiPick+PairTransform (×2), 3-card pipeline, Expert Mode (`IsExpert: true`). `IsLocked: true`. Deployed to `bin\Capabilities\` by build.
+- `Checkup_Settings.json` (both projects): replaced IZ-specific preset content with 3 universal demo presets (all named "Demo", all `IsDemo: true`); field keys use only universally available fields (`IPROP|Description`, `IPROP|Part Number`, `DOC:Material`, `DOC:Appearance`, `IPROP|Revision Number`, 3 `SPECIAL:LOGIC:demo-g*` rows). StylePurge section reset to generic placeholders.
+- `PresetData.cs` (both projects): added `bool IsDemo` property (default `false`). Fixed stale docstring (was "AppData", now "Registry").
+- `CheckupViewModel.cs` (both projects): added `IsDemoActive()`, `ShouldShowDemoWarning()`, `CheckAndShowDemoWarning(Window)` methods; demo session counter (`_demoWindowOpenCount`, `_demoShownThisSession`); `SavePreset()` clears `IsDemo` when BOTH name and field keys differ from demo defaults. See §5.3 for full spec.
+- `CheckupWindow.xaml.cs` (both projects): `OnContentRendered` override calls `CheckAndShowDemoWarning`.
+- Language files (EN+DE, both projects): added `Dlg_DemoWarning_Title` and `Dlg_DemoWarning_Body` keys.
 
 ### 2026-06-02 — Task #22 Preset Library; Task #23 Field Selector labels; audit
 

@@ -93,15 +93,22 @@ namespace CheckupAddIn.Services
         private string WriteStandardProperty(Document doc, string fieldKey, string value)
         {
             var parts = fieldKey.Split('|');
-            if (parts.Length < 3) return "Invalid field key.";
+            if (parts.Length < 2) return "Invalid field key.";
+            // 3-part key: IPROP|SetName|PropName  — try set name first, fall back to scan
+            // 2-part key: IPROP|PropName           — skip set-name lookup, go straight to scan
+            string setHint  = parts.Length >= 3 ? parts[1] : "";
+            string propName = parts.Length >= 3 ? parts[2] : parts[1];
             try
             {
-                // Try stored name first, then language-variant candidates (handles German↔English mismatch).
                 PropertySet ps = null;
-                foreach (var candidate in FieldCatalogBuilder.GetSetNameCandidates(parts[1]))
+                if (!string.IsNullOrEmpty(setHint))
                 {
-                    try { ps = doc.PropertySets[candidate]; } catch { }
-                    if (ps != null) break;
+                    // Try stored name first, then language-variant candidates (handles German↔English mismatch).
+                    foreach (var candidate in FieldCatalogBuilder.GetSetNameCandidates(setHint))
+                    {
+                        try { ps = doc.PropertySets[candidate]; } catch { }
+                        if (ps != null) break;
+                    }
                 }
                 // Last resort: scan all non-user-defined sets for the property name.
                 if (ps == null)
@@ -112,14 +119,14 @@ namespace CheckupAddIn.Services
                         {
                             string sn = candidate.DisplayName ?? candidate.Name ?? "";
                             if (IsUserDefinedSet(sn)) continue;
-                            Property dummy = candidate[parts[2]];
+                            Property dummy = candidate[propName];
                             if (dummy != null) { ps = candidate; break; }
                         }
                         catch { }
                     }
                 }
-                if (ps == null) return $"Property set '{parts[1]}' not found.";
-                ps[parts[2]].Value = value;
+                if (ps == null) return $"Property '{propName}' not found in any property set.";
+                ps[propName].Value = value;
                 return null;
             }
             catch (Exception ex) { return ex.Message; }

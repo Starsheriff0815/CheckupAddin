@@ -141,7 +141,8 @@ namespace CheckupAddIn.Services
             _defaults.Select(p => new PresetData
             {
                 Name      = p.Name,
-                FieldKeys = new List<string>(p.FieldKeys)
+                FieldKeys = new List<string>(p.FieldKeys),
+                IsDemo    = p.IsDemo
             }).ToList();
     }
 }

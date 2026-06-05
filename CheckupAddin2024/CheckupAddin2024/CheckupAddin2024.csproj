@@ -66,6 +66,14 @@
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<TargetPath>Catalogs\Test_Spezifik.catalog.json</TargetPath>
 		</None>
+		<None Update="Resources\Demo.capability.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<TargetPath>Capabilities\Demo.capability.json</TargetPath>
+		</None>
+		<None Update="Resources\Demo.catalog.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<TargetPath>Catalogs\Demo.catalog.json</TargetPath>
+		</None>
 	</ItemGroup>
 
 </Project>

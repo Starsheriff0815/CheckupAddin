@@ -91,6 +91,18 @@ namespace CheckupAddIn.ViewModels
         // Tracks which multi-token Logic row is currently in edit mode (for per-token autocomplete).
         private RowModel _activeMultiTokenEditRow;
 
+        // ── Demo mode warning ──
+        private const string DemoPresetName = "Demo";
+        private static readonly string[] _demoDefaultFieldKeys =
+        {
+            "IPROP|Description", "IPROP|Part Number", "DOC:Material", "DOC:Appearance",
+            "IPROP|Revision Number", "SPECIAL:LOGIC:demo-g03",
+            "SPECIAL:LOGIC:demo-g01", "SPECIAL:LOGIC:demo-g08"
+        };
+        // Static: persists across window close/reopen within the same Inventor session (AppDomain lifetime).
+        private static int  _demoWindowOpenCount  = 0;
+        private static bool _demoShownThisSession = false;
+
 
         // ══════════════════════════════════════════════
         //  OBSERVABLE PROPERTIES
@@ -2460,8 +2472,14 @@ namespace CheckupAddIn.ViewModels
         {
             if (_presets == null || index < 0 || index >= _presets.Count) return;
 
+            var newKeys = Rows.Select(r => r.FieldKey).ToList();
+            bool nameChanged = !string.Equals(name, DemoPresetName, StringComparison.Ordinal);
+            bool keysChanged = !newKeys.SequenceEqual(_demoDefaultFieldKeys);
+            if (nameChanged && keysChanged)
+                _presets[index].IsDemo = false;
+
             _presets[index].Name      = name;
-            _presets[index].FieldKeys = Rows.Select(r => r.FieldKey).ToList();
+            _presets[index].FieldKeys = newKeys;
             _presetsManager.Save(_presets);
 
             switch (index)
@@ -2472,6 +2490,39 @@ namespace CheckupAddIn.ViewModels
             }
 
             StatusMessage = string.Format(LanguageLoader.Get("Msg_PresetSaved"), name, DateTime.Now.ToString("HH:mm:ss"));
+        }
+
+        // ── Demo mode warning ─────────────────────────────────────────────────
+
+        private bool IsDemoActive()
+        {
+            if (_presets == null || _presets.Count != 3) return false;
+            // Primary: flag set by PresetsManager (new installations / after Reset).
+            if (_presets.All(p => p.IsDemo)) return true;
+            // Fallback: detect by content for Registry presets that predate the IsDemo field.
+            return _presets.All(p =>
+                string.Equals(p.Name, DemoPresetName, StringComparison.Ordinal) &&
+                p.FieldKeys.SequenceEqual(_demoDefaultFieldKeys));
+        }
+
+        private bool ShouldShowDemoWarning()
+        {
+            if (!IsDemoActive()) return false;
+            _demoWindowOpenCount++;
+            if (!_demoShownThisSession) { _demoShownThisSession = true; return true; }
+            return (_demoWindowOpenCount % 20) == 0;
+        }
+
+        public void CheckAndShowDemoWarning(Window owner)
+        {
+            if (!ShouldShowDemoWarning()) return;
+            var dlg = new Views.InfoDialog(
+                LanguageLoader.Get("Dlg_DemoWarning_Body"),
+                "DemoWarning",
+                "Dlg_DemoWarning_Title",
+                440, 300);
+            dlg.Owner = owner;
+            dlg.ShowDialog();
         }
 
         public void ExportPreset(int slotIndex, string path)
@@ -2534,8 +2585,16 @@ namespace CheckupAddIn.ViewModels
         private void ResetToDefaults()
         {
             UiStateStore.ClearCatalogBuilderPanelStates();
+            UiStateStore.ClearFieldSelUserPrefs();
             _presetsManager?.ResetToDefaults();
             _presets = _presetsManager?.GetDefaults() ?? new List<PresetData>();
+
+            // Reset returns to factory demo state, so re-arm the demo-mode warning:
+            // clear the session flags so the dialog shows again on the next window open
+            // within this same Inventor session (TDD §5.3). Without this the static
+            // "shown this session" flag would suppress it until the next 20th open.
+            _demoShownThisSession = false;
+            _demoWindowOpenCount  = 0;
 
             if (_presets.Count == 3)
             {

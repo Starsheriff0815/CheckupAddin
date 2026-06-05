@@ -17,12 +17,14 @@
 # ── Addin manifest files (personal — each user generates their own from .addin.template) ──
 *.addin
 
-# ── Personal runtime data (catalogs, capabilities, settings, presets) ──────────
+# ── Legacy single-file seeds + exported personal presets ──────────────────────
 **/Checkup_Catalogs.json
 **/Checkup_Capabilities.json
 **/Checkup_Capabilities.json.migrated
-**/Checkup_Settings.json
 Exported_*_Presets.json
+# NOTE: Checkup_Settings.json IS tracked — it is the generic factory seed
+# (StylePurge defaults + demo presets). Live user presets are stored in the
+# Windows Registry, not in this file, so it carries no personal data.
 
 # ── Test / sample data with company-specific content ──────────────────────────
 **/Resources/Test_Spezifik.*
@@ -33,3 +35,6 @@ Exported_*_Presets.json
 # ── Claude Code files (internal development tooling — not for public repo) ─────
 **/.claude/
 CLAUDE.md
+
+# ── Local dev tooling (personal absolute paths inside — not for public repo) ───
+/tools/
