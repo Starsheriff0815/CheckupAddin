@@ -1,0 +1,68 @@
+{
+  "_Info": "Checkup Add-In 2026 — Checkup_Settings.json. Factory defaults. User-saved presets are stored in the Windows Registry (HKCU\\Software\\Checkup 2026\\Presets). Edit StylePurge to match your company template and style names.",
+
+  "StylePurge": {
+    "TemplateFilePath": "",
+
+    "BorderDefinitions": [
+      "A4 Border",
+      "A3 Border",
+      "A2 Border",
+      "A1 Border",
+      "A0 Border"
+    ],
+
+    "TitleBlockDefinitions": [
+      "Standard Title Block"
+    ],
+
+    "SketchedSymbolsToCopy": [],
+
+    "SketchedSymbolsToDelete": []
+  },
+
+  "Presets": [
+    {
+      "Name": "Demo",
+      "IsDemo": true,
+      "FieldKeys": [
+        "IPROP|Description",
+        "IPROP|Part Number",
+        "DOC:Material",
+        "DOC:Appearance",
+        "IPROP|Revision Number",
+        "SPECIAL:LOGIC:demo-g03",
+        "SPECIAL:LOGIC:demo-g01",
+        "SPECIAL:LOGIC:demo-g08"
+      ]
+    },
+    {
+      "Name": "Demo",
+      "IsDemo": true,
+      "FieldKeys": [
+        "IPROP|Description",
+        "IPROP|Part Number",
+        "DOC:Material",
+        "DOC:Appearance",
+        "IPROP|Revision Number",
+        "SPECIAL:LOGIC:demo-g03",
+        "SPECIAL:LOGIC:demo-g01",
+        "SPECIAL:LOGIC:demo-g08"
+      ]
+    },
+    {
+      "Name": "Demo",
+      "IsDemo": true,
+      "FieldKeys": [
+        "IPROP|Description",
+        "IPROP|Part Number",
+        "DOC:Material",
+        "DOC:Appearance",
+        "IPROP|Revision Number",
+        "SPECIAL:LOGIC:demo-g03",
+        "SPECIAL:LOGIC:demo-g01",
+        "SPECIAL:LOGIC:demo-g08"
+      ]
+    }
+  ]
+}

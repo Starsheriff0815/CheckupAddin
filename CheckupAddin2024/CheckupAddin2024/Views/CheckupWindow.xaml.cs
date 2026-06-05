@@ -1067,6 +1067,12 @@ namespace CheckupAddIn.Views
             return false;
         }
 
+        protected override void OnContentRendered(System.EventArgs e)
+        {
+            base.OnContentRendered(e);
+            _vm?.CheckAndShowDemoWarning(this);
+        }
+
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
         {
             UiStateStore.SaveWindowSize(Width, Height);

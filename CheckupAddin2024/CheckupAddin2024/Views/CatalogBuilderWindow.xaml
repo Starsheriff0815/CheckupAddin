@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:conv="clr-namespace:CheckupAddIn.Converters"
         Title="{DynamicResource Win_Title_LogicConstructor}"
-        Width="1500" Height="1000"
+        Width="1500" Height="1100"
         MinWidth="600" MinHeight="400"
         WindowStartupLocation="CenterOwner"
         Background="{DynamicResource CheckupWindowBackground}">
@@ -503,7 +503,8 @@
                                     Style="{StaticResource CbBtn}" Margin="0" FontSize="10"/>
                             <TextBlock Text="{DynamicResource CatBuilder_Lbl_Locked}"
                                        VerticalAlignment="Center"
-                                       Foreground="{DynamicResource CheckupSecondaryText}"
+                                       Foreground="{DynamicResource CheckupErrorText}"
+                                       FontWeight="SemiBold"
                                        FontSize="11"/>
                         </DockPanel>
                         <!-- Unlocked row -->
@@ -606,7 +607,8 @@
                                     Style="{StaticResource CbBtn}" Margin="0" FontSize="10"/>
                             <TextBlock Text="{DynamicResource CatBuilder_Lbl_Locked}"
                                        VerticalAlignment="Center"
-                                       Foreground="{DynamicResource CheckupSecondaryText}"
+                                       Foreground="{DynamicResource CheckupErrorText}"
+                                       FontWeight="SemiBold"
                                        FontSize="11"/>
                         </DockPanel>
                         <!-- Unlocked row -->
@@ -2161,6 +2163,7 @@
                                     <Button Content="ℹ"
                                             Click="CapCardHelp_Click"
                                             Style="{StaticResource CbBtn}"
+                                            IsEnabled="True"
                                             Width="26" Padding="0"
                                             ToolTip="{DynamicResource Cap_Tip_CardHelp}"/>
                                     <Button Content="▲"
@@ -2191,6 +2194,18 @@
                             </DockPanel>
                         </Border>
                     </StackPanel>
+
+                        <!-- Lock overlay — scoped to the groups editing area (Row 1) only.
+                             Card parameter editors there are TwoWay-bound (not command-gated),
+                             so they need the transparent hit-test overlay. The bottom toolbar,
+                             Cards palette and Basic Logics buttons are RelayCommands gated by
+                             IsSelectedCapSetEditable / HasEditableActiveGroup, so they disable
+                             themselves when locked and the ℹ Card-Help button stays clickable. -->
+                        <Grid Grid.Row="1"
+                              Background="Transparent"
+                              Panel.ZIndex="100"
+                              PreviewMouseWheel="LockOverlay_PreviewMouseWheel"
+                              Visibility="{Binding IsSelectedCapSetLocked, Converter={StaticResource BoolToVis}}"/>
                     </Grid>
 
                     <!-- Basic Logics panel — toggle strip always visible, content expands to the right
@@ -2336,15 +2351,6 @@
                         </DockPanel>
                     </Expander>
 
-                    <!-- Transparent overlay spans both columns (content + Basic Logics).
-                         Background="Transparent" is intentional: a non-null brush makes
-                         a Grid hit-testable, so all mouse events are absorbed silently
-                         without changing the visual state of controls underneath. -->
-                    <Grid Grid.ColumnSpan="2"
-                          Background="Transparent"
-                          Panel.ZIndex="100"
-                          PreviewMouseWheel="LockOverlay_PreviewMouseWheel"
-                          Visibility="{Binding IsSelectedCapSetLocked, Converter={StaticResource BoolToVis}}"/>
                 </Grid>
             </Grid>
 
@@ -2463,6 +2469,7 @@
                         <Button Content="ℹ"
                                 Click="CatalogRoleHelp_Click"
                                 Style="{StaticResource CbBtn}"
+                                IsEnabled="True"
                                 Width="26"
                                 Padding="0"
                                 Margin="4,0,0,0"

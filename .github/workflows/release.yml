@@ -51,6 +51,9 @@ jobs:
           # Manifest template
           Copy-Item "CheckupAddin2026\CheckupAddin2026\Autodesk.CheckupAddIn2026.addin.template" $pkg
 
+          # Factory settings seed (StylePurge defaults + demo presets)
+          Copy-Item "$bin\Checkup_Settings.json" $pkg
+
           # Language files
           New-Item -ItemType Directory "$pkg\Languages" | Out-Null
           Copy-Item "$bin\Languages\*" "$pkg\Languages\" -Recurse
@@ -84,6 +87,9 @@ jobs:
 
           # Manifest template
           Copy-Item "CheckupAddin2024\CheckupAddin2024\Autodesk.CheckupAddIn2024.addin.template" $pkg
+
+          # Factory settings seed (StylePurge defaults + demo presets)
+          Copy-Item "$bin\Checkup_Settings.json" $pkg
 
           # Language files
           New-Item -ItemType Directory "$pkg\Languages" | Out-Null

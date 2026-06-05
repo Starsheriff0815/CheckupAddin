@@ -275,6 +275,9 @@
   "Msg_ResetDone": "Reset to defaults – {0}",
   "Msg_NoDocForWrite": "No document available.",
 
+  "Dlg_DemoWarning_Title": "Demo Mode Active",
+  "Dlg_DemoWarning_Body":  "You are running the add-in with the factory demo configuration.\n\nThe demo Logic groups write values directly to your document (Appearance, Material, Description, etc.). Test on a new blank file to avoid modifying real documents.\n\nThis reminder disappears once you save at least one preset with a new name and your own field layout.\n\nTip: right-click a preset button → Save Preset.",
+
   "CatBuilder_Lbl_Locked":   "Locked — read-only",
   "CatBuilder_Lbl_Unlocked": "Unlocked — editable",
   "CatBuilder_Btn_Unlock":   "Unlock",

@@ -96,14 +96,19 @@ namespace CheckupAddIn.Services
         private string WriteStandardProperty(Document doc, string fieldKey, string value)
         {
             var parts = fieldKey.Split('|');
-            if (parts.Length < 3) return "Invalid field key.";
+            if (parts.Length < 2) return "Invalid field key.";
+            string setHint  = parts.Length >= 3 ? parts[1] : "";
+            string propName = parts.Length >= 3 ? parts[2] : parts[1];
             try
             {
                 PropertySet ps = null;
-                foreach (var candidate in FieldCatalogBuilder.GetSetNameCandidates(parts[1]))
+                if (!string.IsNullOrEmpty(setHint))
                 {
-                    try { ps = doc.PropertySets[candidate]; } catch { }
-                    if (ps != null) break;
+                    foreach (var candidate in FieldCatalogBuilder.GetSetNameCandidates(setHint))
+                    {
+                        try { ps = doc.PropertySets[candidate]; } catch { }
+                        if (ps != null) break;
+                    }
                 }
                 if (ps == null)
                 {
@@ -113,14 +118,14 @@ namespace CheckupAddIn.Services
                         {
                             string sn = candidate.DisplayName ?? candidate.Name ?? "";
                             if (IsUserDefinedSet(sn)) continue;
-                            Property dummy = candidate[parts[2]];
+                            Property dummy = candidate[propName];
                             if (dummy != null) { ps = candidate; break; }
                         }
                         catch { }
                     }
                 }
-                if (ps == null) return $"Property set '{parts[1]}' not found.";
-                ps[parts[2]].Value = value;
+                if (ps == null) return "Property '" + propName + "' not found in any property set.";
+                ps[propName].Value = value;
                 return null;
             }
             catch (Exception ex) { return ex.Message; }
