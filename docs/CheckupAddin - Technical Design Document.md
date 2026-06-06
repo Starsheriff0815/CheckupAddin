@@ -1,7 +1,7 @@
 ﻿# CheckupAddin — Technical Design Document
 
 > **Scope:** Both projects — CheckupAddin2026 (.NET 8.0, Inventor 2026) and CheckupAddin2024 (.NET 4.8, Inventor 2024).
-> **Author of this doc:** Norman Lindner.
+> **Author of this doc:** Starsheriff.
 > **Last updated:** 2026-06-06.
 
 ---
