@@ -1,0 +1,37 @@
+# ── Build output ──────────────────────────────────────────────────────────────
+**/bin/
+**/obj/
+
+# ── Visual Studio ──────────────────────────────────────────────────────────────
+**/.vs/
+*.user
+*.suo
+*.rsuser
+*.userosscache
+
+# ── NuGet ──────────────────────────────────────────────────────────────────────
+**/packages/
+**/project.nuget.cache
+**/project.assets.json
+
+# ── Add-in manifests (generated per machine from the .addin.template) ──────────
+*.addin
+
+# ── Local runtime data and exported presets ───────────────────────────────────
+**/Checkup_Catalogs.json
+**/Checkup_Capabilities.json
+**/Checkup_Capabilities.json.migrated
+Exported_*_Presets.json
+# Checkup_Settings.json is tracked: it is the factory seed (StylePurge defaults
+# + demo presets). Live user presets are stored in the Windows Registry.
+
+# ── Local sample/test data ────────────────────────────────────────────────────
+**/Resources/Test_Spezifik.*
+
+# ── Obfuscation config and output ─────────────────────────────────────────────
+**/Dotfuscator/
+
+# ── Local editor and tooling settings ─────────────────────────────────────────
+**/.claude/
+CLAUDE.md
+/tools/
