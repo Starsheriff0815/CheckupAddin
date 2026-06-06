@@ -1,0 +1,286 @@
+{
+  "Id": "demo-001-capabilities",
+  "Name": "Demo — All Card Types",
+  "IsLocked": true,
+  "LastUpdated": "2026-06-03T00:00:00Z",
+  "Groups": [
+    {
+      "Id": "demo-g01",
+      "Name": "Demo: Color (Dropdown)",
+      "TargetFieldKey": "IPROP|Subject",
+      "IsExpert": false,
+      "Cards": [
+        {
+          "Id": "d01c0001",
+          "Type": "Dropdown",
+          "Enabled": true,
+          "CatalogId": "demo-001-catalog",
+          "Params": {}
+        }
+      ]
+    },
+    {
+      "Id": "demo-g02",
+      "Name": "Demo: Color (Button)",
+      "TargetFieldKey": "IPROP|Keywords",
+      "IsExpert": false,
+      "Cards": [
+        {
+          "Id": "d02c0001",
+          "Type": "Button",
+          "Enabled": true,
+          "CatalogId": "demo-001-catalog",
+          "Params": {}
+        }
+      ]
+    },
+    {
+      "Id": "demo-g03",
+      "Name": "Demo: Material (Dropdown + Button)",
+      "TargetFieldKey": "DOC:Material",
+      "IsExpert": false,
+      "Cards": [
+        {
+          "Id": "d03c0001",
+          "Type": "Dropdown",
+          "Enabled": true,
+          "CatalogId": "demo-001-catalog",
+          "Params": {}
+        },
+        {
+          "Id": "d03c0002",
+          "Type": "Button",
+          "Enabled": true,
+          "CatalogId": "demo-001-catalog",
+          "Params": {}
+        }
+      ]
+    },
+    {
+      "Id": "demo-g04",
+      "Name": "Demo: Prefix / Suffix",
+      "TargetFieldKey": "IPROP|Description",
+      "IsExpert": false,
+      "Cards": [
+        {
+          "Id": "d04c0001",
+          "Type": "PrefixSuffix",
+          "Enabled": true,
+          "CatalogId": "",
+          "Params": {
+            "Prefix": "DEMO-",
+            "Suffix": "",
+            "IsRemoveMode": "false"
+          }
+        }
+      ]
+    },
+    {
+      "Id": "demo-g05",
+      "Name": "Demo: Sort",
+      "TargetFieldKey": "IPROP|Keywords",
+      "IsExpert": false,
+      "Cards": [
+        {
+          "Id": "d05c0001",
+          "Type": "Sort",
+          "Enabled": true,
+          "CatalogId": "demo-001-catalog",
+          "Params": {
+            "SortLookupRole": "PRI",
+            "SortTokenSeparator": "-",
+            "SortInvert": "false"
+          }
+        }
+      ]
+    },
+    {
+      "Id": "demo-g06",
+      "Name": "Demo: Link",
+      "TargetFieldKey": "DOC:Appearance",
+      "IsExpert": false,
+      "Cards": [
+        {
+          "Id": "d06c0001",
+          "Type": "Dropdown",
+          "Enabled": true,
+          "CatalogId": "demo-001-catalog",
+          "Params": {}
+        },
+        {
+          "Id": "d06c0002",
+          "Type": "Link",
+          "Enabled": true,
+          "CatalogId": "",
+          "Params": {
+            "PartnerFieldKey": "SPECIAL:LOGIC:demo-g01"
+          }
+        }
+      ]
+    },
+    {
+      "Id": "demo-g07",
+      "Name": "Demo: Sync",
+      "TargetFieldKey": "IPROP|Comments",
+      "IsExpert": false,
+      "Cards": [
+        {
+          "Id": "d07c0001",
+          "Type": "Sync",
+          "Enabled": true,
+          "CatalogId": "",
+          "Params": {
+            "CompanionFieldKey": "DOC:Material",
+            "CompanionRole": "PRI"
+          }
+        }
+      ]
+    },
+    {
+      "Id": "demo-g08",
+      "Name": "Demo: Basic Logic (Formula)",
+      "TargetFieldKey": "IPROP|Designer",
+      "IsExpert": false,
+      "Cards": [
+        {
+          "Id": "d08c0001",
+          "Type": "BasicLogic",
+          "Enabled": true,
+          "CatalogId": "",
+          "Params": {
+            "Formula": "IF(EQ({INPUT}, \"\"), \"— no input —\", CONCATENATE(\"Demo: \", {INPUT}))"
+          }
+        }
+      ]
+    },
+    {
+      "Id": "demo-g09",
+      "Name": "Demo: Multi-Token Short",
+      "TargetFieldKey": "IPROP|Subject",
+      "IsExpert": false,
+      "Cards": [
+        {
+          "Id": "d09c0001",
+          "Type": "MultiPick",
+          "Enabled": true,
+          "CatalogId": "demo-001-catalog",
+          "Params": {
+            "PrimaryTokenSeparator": "-",
+            "CompanionFieldKey": "IPROP|Manager",
+            "CompanionRole": "SEC",
+            "CompanionTokenSeparator": ", "
+          }
+        },
+        {
+          "Id": "d09c0002",
+          "Type": "PairTransform",
+          "Enabled": true,
+          "CatalogId": "demo-001-catalog",
+          "Params": {
+            "SourceTokenSeparator": "-",
+            "LookupRole": "PRI",
+            "OutputRole": "SEC",
+            "OutputTokenSeparator": ", ",
+            "CompanionFieldKey": "IPROP|Manager"
+          }
+        }
+      ]
+    },
+    {
+      "Id": "demo-g10",
+      "Name": "Demo: Multi-Token Long",
+      "TargetFieldKey": "IPROP|Manager",
+      "IsExpert": false,
+      "Cards": [
+        {
+          "Id": "d10c0001",
+          "Type": "MultiPick",
+          "Enabled": true,
+          "CatalogId": "demo-001-catalog",
+          "Params": {
+            "PrimaryTokenSeparator": ", ",
+            "CompanionFieldKey": "IPROP|Subject",
+            "CompanionRole": "PRI",
+            "CompanionTokenSeparator": "-"
+          }
+        },
+        {
+          "Id": "d10c0002",
+          "Type": "PairTransform",
+          "Enabled": true,
+          "CatalogId": "demo-001-catalog",
+          "Params": {
+            "SourceTokenSeparator": ", ",
+            "LookupRole": "SEC",
+            "OutputRole": "PRI",
+            "OutputTokenSeparator": "-",
+            "CompanionFieldKey": "IPROP|Subject"
+          }
+        },
+        {
+          "Id": "d10c0003",
+          "Type": "Link",
+          "Enabled": true,
+          "CatalogId": "",
+          "Params": {
+            "PartnerFieldKey": "SPECIAL:LOGIC:demo-g09"
+          }
+        }
+      ]
+    },
+    {
+      "Id": "demo-g11",
+      "Name": "Demo: Combined Pipeline",
+      "TargetFieldKey": "IPROP|Part Number",
+      "IsExpert": false,
+      "Cards": [
+        {
+          "Id": "d11c0001",
+          "Type": "Dropdown",
+          "Enabled": true,
+          "CatalogId": "demo-001-catalog",
+          "Params": {}
+        },
+        {
+          "Id": "d11c0002",
+          "Type": "PrefixSuffix",
+          "Enabled": true,
+          "CatalogId": "",
+          "Params": {
+            "Prefix": "PART-",
+            "Suffix": "",
+            "IsRemoveMode": "false"
+          }
+        },
+        {
+          "Id": "d11c0003",
+          "Type": "Sort",
+          "Enabled": true,
+          "CatalogId": "demo-001-catalog",
+          "Params": {
+            "SortLookupRole": "PRI",
+            "SortTokenSeparator": "-",
+            "SortInvert": "false"
+          }
+        }
+      ]
+    },
+    {
+      "Id": "demo-g12",
+      "Name": "Demo: Expert Mode (Live Field Read)",
+      "TargetFieldKey": "IPROP|Comments",
+      "IsExpert": true,
+      "Cards": [
+        {
+          "Id": "d12c0001",
+          "Type": "BasicLogic",
+          "Enabled": true,
+          "CatalogId": "",
+          "Params": {
+            "Formula": "IF(EQ($[DOC:Material], \"Steel, Mild\"), \"Standard — Mild Steel\", IF(EQ($[DOC:Material], \"\"), \"— no material set —\", CONCATENATE(\"Special: \", $[DOC:Material])))"
+          }
+        }
+      ]
+    }
+  ]
+}

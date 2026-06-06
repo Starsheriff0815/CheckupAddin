@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.37111.16 d17.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CheckupAddin2026", "CheckupAddin2026\CheckupAddin2026.csproj", "{53FABCC3-E5DF-558C-A950-3494BC432E9F}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{53FABCC3-E5DF-558C-A950-3494BC432E9F}.Debug|x64.ActiveCfg = Debug|x64
+		{53FABCC3-E5DF-558C-A950-3494BC432E9F}.Debug|x64.Build.0 = Debug|x64
+		{53FABCC3-E5DF-558C-A950-3494BC432E9F}.Release|x64.ActiveCfg = Release|x64
+		{53FABCC3-E5DF-558C-A950-3494BC432E9F}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {E15125E4-BAA3-4C21-AF82-1F803D6E5426}
+	EndGlobalSection
+EndGlobal
