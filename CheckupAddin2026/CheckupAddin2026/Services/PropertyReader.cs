@@ -109,6 +109,96 @@ namespace CheckupAddIn.Services
             return "";
         }
 
+        // ── Formula (expression) detection ──────────────────────────────────────
+        // Text iProperties can be driven by an Inventor expression (e.g. "=<Width> x <Height>").
+        // Property.Value returns the *evaluated* text; Property.Expression returns the formula,
+        // which starts with '=' when one is present. These readers surface the formula so the UI
+        // can show the fx toggle. They return "" when the property holds a literal / has no
+        // expression / is not found — never "n/a", so the absence of a formula is unambiguous.
+
+        /// <summary>Returns the expression behind a user-defined iProperty, or "" when it is a literal.</summary>
+        public string ReadUserDefinedExpression(Document doc, string propName)
+        {
+            if (doc == null || string.IsNullOrEmpty(propName)) return "";
+            try
+            {
+                PropertySet ps = null;
+                foreach (var setName in UserDefinedSetCandidates)
+                {
+                    try { ps = doc.PropertySets[setName]; } catch { }
+                    if (ps != null) break;
+                }
+                if (ps == null) return "";
+                var p = ps[propName];
+                return p != null ? FormulaOrEmpty(ReadExpression(p)) : "";
+            }
+            catch { return ""; }
+        }
+
+        /// <summary>Returns the expression behind a standard iProperty (set + name candidates), or "".</summary>
+        public string ReadStandardExpression(Document doc, string[] setCandidates, string[] propCandidates)
+        {
+            if (doc == null) return "";
+            foreach (var setName in setCandidates)
+            {
+                PropertySet ps = null;
+                try { ps = doc.PropertySets[setName]; } catch { }
+                if (ps == null) continue;
+                foreach (var propName in propCandidates)
+                {
+                    try
+                    {
+                        var p = ps[propName];
+                        if (p != null) return FormulaOrEmpty(ReadExpression(p));
+                    }
+                    catch { }
+                }
+            }
+            return "";
+        }
+
+        /// <summary>Returns the expression behind a standard iProperty found by name across all
+        /// non-user-defined sets (short-form IPROP| keys), or "".</summary>
+        public string ReadStandardExpressionByName(Document doc, string propName)
+        {
+            if (doc == null || string.IsNullOrEmpty(propName)) return "";
+            try
+            {
+                foreach (PropertySet ps in doc.PropertySets)
+                {
+                    string setName = "";
+                    try { setName = ps.DisplayName ?? ps.Name ?? ""; } catch { continue; }
+                    string lower = setName.ToLowerInvariant();
+                    if (lower.Contains("user defined") || lower.Contains("benutzerdefiniert") || lower.Contains("custom"))
+                        continue;
+                    try
+                    {
+                        var p = ps[propName];
+                        if (p != null) return FormulaOrEmpty(ReadExpression(p));
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+            return "";
+        }
+
+        /// <summary>Late-bound read of Property.Expression; "" if unsupported, empty, or it throws.</summary>
+        private static string ReadExpression(Property p)
+        {
+            try
+            {
+                object o = Microsoft.VisualBasic.Interaction.CallByName(
+                    p, "Expression", Microsoft.VisualBasic.CallType.Get);
+                return o?.ToString() ?? "";
+            }
+            catch { return ""; }
+        }
+
+        /// <summary>Keeps the string only when it is an Inventor formula (starts with '='); else "".</summary>
+        private static string FormulaOrEmpty(string expr) =>
+            (!string.IsNullOrEmpty(expr) && expr.TrimStart().StartsWith("=", StringComparison.Ordinal)) ? expr : "";
+
         /// <summary>
         /// Reads a document-level value (Material, Appearance, Units, Precision, etc.)
         /// </summary>
@@ -170,16 +260,7 @@ namespace CheckupAddIn.Services
         {
             if (doc == null) return "n/a";
 
-            Parameters parameters = null;
-            try
-            {
-                if (doc.DocumentType == DocumentTypeEnum.kPartDocumentObject)
-                    parameters = ((PartDocument)doc).ComponentDefinition.Parameters;
-                else if (doc.DocumentType == DocumentTypeEnum.kAssemblyDocumentObject)
-                    parameters = ((AssemblyDocument)doc).ComponentDefinition.Parameters;
-            }
-            catch { }
-
+            Parameters parameters = GetParameters(doc);
             if (parameters == null) return "n/a";
 
             try
@@ -197,6 +278,101 @@ namespace CheckupAddIn.Services
             catch { }
 
             return "n/a";
+        }
+
+        /// <summary>
+        /// Reads the *evaluated* value of a parameter, formatted in the document's units
+        /// (e.g. "120 mm"). This is the read-state display for PARAM rows; the equation
+        /// (from <see cref="ReadParameterExpression"/>) is shown only in the fx state.
+        /// </summary>
+        public string ReadParameterValue(Document doc, string paramName)
+        {
+            if (doc == null) return "n/a";
+
+            Parameters parameters = GetParameters(doc);
+            if (parameters == null) return "n/a";
+
+            try
+            {
+                var up = parameters.UserParameters[paramName];
+                return FormatParameterValue(doc, Convert.ToDouble(up.Value), up.get_Units());
+            }
+            catch { }
+
+            try
+            {
+                var mp = parameters.ModelParameters[paramName];
+                return FormatParameterValue(doc, Convert.ToDouble(mp.Value), mp.get_Units());
+            }
+            catch { }
+
+            return "n/a";
+        }
+
+        private static Parameters GetParameters(Document doc)
+        {
+            try
+            {
+                if (doc.DocumentType == DocumentTypeEnum.kPartDocumentObject)
+                    return ((PartDocument)doc).ComponentDefinition.Parameters;
+                if (doc.DocumentType == DocumentTypeEnum.kAssemblyDocumentObject)
+                    return ((AssemblyDocument)doc).ComponentDefinition.Parameters;
+            }
+            catch { }
+            return null;
+        }
+
+        // Parameter.Value is in internal database units (cm/radians). GetStringFromValue converts
+        // it to the parameter's own units honouring document precision; we append the unit token
+        // when the formatted result is a bare number so length/angle rows read like "120 mm".
+        private static string FormatParameterValue(Document doc, double value, object units)
+        {
+            // Parameter.Units is a COM dual-accessor (get_Units) returning the unit token as text.
+            string unitStr = units?.ToString() ?? "";
+
+            string text;
+            try
+            {
+                var uom = doc.UnitsOfMeasure;            // COM two-dot rule: keep the accessor in a local
+                text = uom.GetStringFromValue(value, units);
+            }
+            catch { text = value.ToString(System.Globalization.CultureInfo.InvariantCulture); }
+
+            if (!string.IsNullOrEmpty(unitStr)
+                && !unitStr.Equals("ul", StringComparison.OrdinalIgnoreCase)   // 'ul' = unitless
+                && !HasLetter(text))
+                text = text.TrimEnd() + " " + unitStr;
+
+            return text;
+        }
+
+        private static bool HasLetter(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return false;
+            foreach (char c in s) if (char.IsLetter(c)) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// True when a parameter expression is genuinely formula-driven (references another
+        /// parameter or contains arithmetic) rather than a plain literal like "120 mm".
+        /// Drives whether a PARAM row offers the fx toggle.
+        /// </summary>
+        public static bool IsParameterFormula(string expression)
+        {
+            if (string.IsNullOrWhiteSpace(expression)) return false;
+            string t = expression.Trim();
+
+            // Any arithmetic operator or function call → formula.
+            if (t.IndexOfAny(new[] { '+', '-', '*', '/', '^', '(', ')' }) >= 0) return true;
+
+            string[] tokens = t.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (tokens.Length == 0) return false;
+
+            char f = tokens[0][0];
+            bool firstNumeric = char.IsDigit(f) || f == '.';
+            if (!firstNumeric) return true;        // bare parameter reference, e.g. "d3"
+            return tokens.Length > 2;              // "120 mm" = literal; more tokens → formula
         }
     }
 }

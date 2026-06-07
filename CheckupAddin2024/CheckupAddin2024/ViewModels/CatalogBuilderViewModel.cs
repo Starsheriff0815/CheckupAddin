@@ -1151,12 +1151,21 @@ namespace CheckupAddIn.ViewModels
             IsDirty = true;
         }
 
-        private void RemoveEntry()
+        private void RemoveEntry() =>
+            RemoveEntries(_selectedEntry != null ? new List<EntryRow> { _selectedEntry } : null);
+
+        /// <summary>Deletes one or more entry rows (context-menu single OR multi-select).
+        /// Single-row delete delegates here so there is one code path and one menu label.</summary>
+        public void RemoveEntries(IList<EntryRow> rows)
         {
-            if (_selectedEntry == null || _workingCopy == null) return;
-            var match = _workingCopy.Entries.Find(e => e.Values == _selectedEntry.Data);
-            if (match != null) _workingCopy.Entries.Remove(match);
-            EntryRows.Remove(_selectedEntry);
+            if (_workingCopy == null || rows == null || rows.Count == 0) return;
+            if (ConfirmDelete?.Invoke() != true) return;   // same guard as DeleteColumns (Task #27)
+            foreach (var entry in rows.Where(r => r != null).Distinct().ToList())
+            {
+                var match = _workingCopy.Entries.Find(e => e.Values == entry.Data);
+                if (match != null) _workingCopy.Entries.Remove(match);
+                EntryRows.Remove(entry);
+            }
             SelectedEntry = null;
             IsDirty = true;
         }
@@ -1208,14 +1217,21 @@ namespace CheckupAddIn.ViewModels
             ColumnsChanged?.Invoke();
         }
 
-        private void DeleteColumn()
+        private void DeleteColumn() =>
+            DeleteColumns(_selectedColumn != null ? new List<CatalogColumn> { _selectedColumn } : null);
+
+        /// <summary>Deletes one or more columns (context-menu single OR multi-select). One confirmation
+        /// covers the whole batch. Single-column delete delegates here so there is one menu label.</summary>
+        public void DeleteColumns(IList<CatalogColumn> cols)
         {
-            if (_selectedColumn == null || _workingCopy == null) return;
+            if (_workingCopy == null || cols == null || cols.Count == 0) return;
             if (ConfirmDelete?.Invoke() != true) return;
-            string key = _selectedColumn.Key;
-            _workingCopy.Columns.Remove(_selectedColumn);
-            foreach (var e in _workingCopy.Entries) e.Values.Remove(key);
-            CurrentColumns.Remove(_selectedColumn);
+            foreach (var col in cols.Where(c => c != null).Distinct().ToList())
+            {
+                _workingCopy.Columns.Remove(col);
+                foreach (var e in _workingCopy.Entries) e.Values.Remove(col.Key);
+                CurrentColumns.Remove(col);
+            }
             SelectedColumn = null;
             RefreshEntries();
             IsDirty = true;

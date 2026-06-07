@@ -61,6 +61,7 @@
 
   "Btn_CatalogPicker": "📋",
   "Tip_CatalogPicker": "Open Catalog",
+  "Tip_FormulaToggle": "Show / edit the formula behind this value (fx)",
   "CatalogPicker_Title": "Catalog Selection",
   "CatalogPicker_All": "All",
   "CatalogPicker_Selection": "Selection:",
@@ -274,6 +275,7 @@
   "Msg_ImportFailed": "Import failed: {0}",
   "Msg_ResetDone": "Reset to defaults – {0}",
   "Msg_NoDocForWrite": "No document available.",
+  "Msg_FormulaTargetUnresolved": "The formula's target field could not be resolved (broken or circular logic chain).",
 
   "Dlg_DemoWarning_Title": "Demo Mode Active",
   "Dlg_DemoWarning_Body":  "You are running the add-in with the factory demo configuration.\n\nThe demo Logic groups write values directly to your document (Appearance, Material, Description, etc.). Test on a new blank file to avoid modifying real documents.\n\nThis reminder disappears once you save at least one preset with a new name and your own field layout.\n\nTip: right-click a preset button → Save Preset.",
@@ -286,6 +288,7 @@
   "Info_Main_Title":      "Quick Guide",
   "Info_Main_Intro":      "Select an object (IPT / IAM) → values refresh automatically on document or selection change.",
   "Info_Main_Edit":       "Click a value → edit in-place → OK.",
+  "Info_Main_Formula":    "ƒx button → the value comes from an Inventor formula (iProperty expression or parameter equation); press ƒx to reveal and edit the equation behind it.",
   "Info_Main_MiterGap":   "searches for the 2nd tab in the model browser and adds the tab length as a row for reference.",
   "Info_Main_RightClick": "Right-click a value field → copy to clipboard.",
   "Info_Main_Drag":       "Drag rows to reorder.",

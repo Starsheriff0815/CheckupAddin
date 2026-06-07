@@ -910,7 +910,20 @@
                                                  KeyDown="EditTextBox_KeyDown"
                                                  TextChanged="EditTextBox_TextChanged"
                                                  LostFocus="EditControl_LostFocus"
-                                                 IsVisibleChanged="EditControl_IsVisibleChanged"/>
+                                                 IsVisibleChanged="EditControl_IsVisibleChanged">
+                                            <!-- Red when Inventor rejected a parameter equation typed here
+                                                 (value-first PARAM inline edit) — mirrors the fx editor. -->
+                                            <TextBox.Style>
+                                                <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsFormulaInvalid}" Value="True">
+                                                            <Setter Property="Foreground"  Value="{DynamicResource CheckupErrorText}"/>
+                                                            <Setter Property="BorderBrush" Value="{DynamicResource CheckupErrorText}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBox.Style>
+                                        </TextBox>
 
                                         <!-- Per-token autocomplete popup -->
                                         <Popup PlacementTarget="{Binding ElementName=PlainEditBox}"
@@ -1119,19 +1132,86 @@
                                         </Popup>
                                     </Grid>
 
-                                    <!-- Sub-col 1: Logic catalog picker button (Logic rows with Button card in display mode) -->
-                                    <Button Grid.Column="1"
-                                            Content="{DynamicResource Btn_CatalogPicker}"
-                                            ToolTip="{DynamicResource Tip_CatalogPicker}"
-                                            FontSize="11"
-                                            Background="{DynamicResource CheckupButtonBackground}"
-                                            Foreground="{DynamicResource CheckupButtonForeground}"
-                                            BorderBrush="{DynamicResource CheckupButtonBorder}"
-                                            BorderThickness="1"
-                                            Margin="2,1,2,1" Height="24"
-                                            Command="{Binding DataContext.OpenCatalogPickerCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                            CommandParameter="{Binding}"
-                                            Visibility="{Binding IsLogicPickerDisplayMode, Converter={StaticResource BoolToVis}}"/>
+                                    <!-- Sub-col 0: Formula (fx) editor — edits the equation behind the value.
+                                         Spans only sub-col 0 so the fx toggle in sub-col 1 stays visible/clickable. -->
+                                    <TextBox x:Name="FormulaEditBox"
+                                             Grid.Column="0"
+                                             Text="{Binding EditText, UpdateSourceTrigger=PropertyChanged}"
+                                             VerticalContentAlignment="Center" HorizontalAlignment="Stretch"
+                                             Margin="4,1,2,1"
+                                             FontFamily="Consolas"
+                                             Background="{DynamicResource CheckupEditableBackground}"
+                                             MouseRightButtonUp="Value_RightClick"
+                                             KeyDown="EditTextBox_KeyDown"
+                                             LostFocus="EditControl_LostFocus"
+                                             IsVisibleChanged="EditControl_IsVisibleChanged"
+                                             Visibility="{Binding IsFormulaEditMode, Converter={StaticResource BoolToVis}}">
+                                        <!-- Foreground/BorderBrush via Style (NOT local values) so the
+                                             IsFormulaInvalid red trigger can override them. -->
+                                        <TextBox.Style>
+                                            <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                                                <Setter Property="Foreground"  Value="{DynamicResource CheckupPrimaryText}"/>
+                                                <Setter Property="BorderBrush" Value="{DynamicResource CheckupButtonBorder}"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsFormulaInvalid}" Value="True">
+                                                        <Setter Property="Foreground"  Value="{DynamicResource CheckupErrorText}"/>
+                                                        <Setter Property="BorderBrush" Value="{DynamicResource CheckupErrorText}"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBox.Style>
+                                    </TextBox>
+
+                                    <!-- Sub-col 1: right-hand button slot — Window-Picker and fx toggle SIDE BY SIDE. -->
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+
+                                        <!-- Logic catalog picker button (Logic rows with Button card in display mode) -->
+                                        <Button Content="{DynamicResource Btn_CatalogPicker}"
+                                                ToolTip="{DynamicResource Tip_CatalogPicker}"
+                                                FontSize="11"
+                                                Background="{DynamicResource CheckupButtonBackground}"
+                                                Foreground="{DynamicResource CheckupButtonForeground}"
+                                                BorderBrush="{DynamicResource CheckupButtonBorder}"
+                                                BorderThickness="1"
+                                                Margin="2,1,2,1" Height="24"
+                                                Command="{Binding DataContext.OpenCatalogPickerCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}"
+                                                Visibility="{Binding IsLogicPickerDisplayMode, Converter={StaticResource BoolToVis}}"/>
+
+                                        <!-- fx formula toggle — shown when the value (or a logic row's target) is
+                                             formula-driven. Press to reveal/edit the equation; press again to return. -->
+                                        <Button Command="{Binding DataContext.ToggleFormulaEditCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="{DynamicResource Tip_FormulaToggle}"
+                                                Width="24" Height="24" Margin="2,1,2,1"
+                                                Visibility="{Binding ShowFormulaToggle, Converter={StaticResource BoolToVis}}">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="fxBd"
+                                                            Background="{DynamicResource CheckupButtonBackground}"
+                                                            BorderBrush="{DynamicResource CheckupButtonBorder}"
+                                                            BorderThickness="1">
+                                                        <TextBlock Text="ƒx"
+                                                                   FontStyle="Italic" FontSize="12" FontWeight="Bold"
+                                                                   Foreground="{DynamicResource CheckupButtonForeground}"
+                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <DataTrigger Binding="{Binding IsFormulaEditing}" Value="True">
+                                                            <Setter TargetName="fxBd" Property="Background"  Value="{DynamicResource CheckupPresetActiveBackground}"/>
+                                                            <Setter TargetName="fxBd" Property="BorderBrush" Value="{DynamicResource CheckupPresetActiveBorder}"/>
+                                                        </DataTrigger>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="fxBd" Property="Opacity" Value="0.85"/>
+                                                        </Trigger>
+                                                        <Trigger Property="IsPressed" Value="True">
+                                                            <Setter TargetName="fxBd" Property="Opacity" Value="0.6"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+                                    </StackPanel>
                                 </Grid>
 
                                 <!-- Col 2: Field selector (normal mode) — Button + custom Popup -->

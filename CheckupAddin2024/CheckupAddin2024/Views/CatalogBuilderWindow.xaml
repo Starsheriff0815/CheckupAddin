@@ -141,30 +141,38 @@
 
         <!-- Column header: letter + sort arrow + role badge on top row, user label below -->
         <DataTemplate x:Key="ColHeaderTemplate">
-            <StackPanel Margin="0,1,0,0">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding Letter}"
-                               FontSize="9" FontWeight="Normal"
-                               Foreground="{DynamicResource CheckupSecondaryText}"/>
-                    <TextBlock Text="{Binding SortArrow}"
-                               FontSize="9" FontWeight="Normal"
-                               Foreground="{DynamicResource CheckupDragHighlight}"
-                               Margin="2,0,0,0"/>
-                    <!-- Role badge — colored pill, hidden when role is None -->
-                    <Border Background="{Binding RoleBrush}"
-                            CornerRadius="2" Padding="3,0"
-                            Margin="4,0,0,0"
-                            Visibility="{Binding HasRole, Converter={StaticResource BoolToVis}}">
-                        <TextBlock Text="{Binding RoleBadge}"
-                                   FontSize="8" FontWeight="Bold"
-                                   Foreground="White"/>
-                    </Border>
+            <DockPanel Margin="0,1,0,0" LastChildFill="True">
+                <!-- Sort caret — docked at the right edge, just left of the resize gripper.
+                     Click here to sort / toggle direction (ColumnHeader_Click + IsSortCaretClick).
+                     ⇅ when unsorted, ▲/▼ when this column is the active sort. Clicking the rest of
+                     the header selects the whole column (spreadsheet-style). -->
+                <TextBlock DockPanel.Dock="Right"
+                           Text="{Binding SortArrow}"
+                           FontSize="11"
+                           VerticalAlignment="Center"
+                           Margin="3,0,7,0"
+                           Foreground="{DynamicResource CheckupDragHighlight}"/>
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Letter}"
+                                   FontSize="9" FontWeight="Normal"
+                                   Foreground="{DynamicResource CheckupSecondaryText}"/>
+                        <!-- Role badge — colored pill, hidden when role is None -->
+                        <Border Background="{Binding RoleBrush}"
+                                CornerRadius="2" Padding="3,0"
+                                Margin="4,0,0,0"
+                                Visibility="{Binding HasRole, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="{Binding RoleBadge}"
+                                       FontSize="8" FontWeight="Bold"
+                                       Foreground="White"/>
+                        </Border>
+                    </StackPanel>
+                    <TextBlock Text="{Binding Label}"
+                               FontWeight="SemiBold"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding Label}"/>
                 </StackPanel>
-                <TextBlock Text="{Binding Label}"
-                           FontWeight="SemiBold"
-                           TextTrimming="CharacterEllipsis"
-                           ToolTip="{Binding Label}"/>
-            </StackPanel>
+            </DockPanel>
         </DataTemplate>
 
         <!-- Flat button used throughout this window -->
@@ -258,6 +266,11 @@
             <Setter Property="Width"      Value="36"/>
             <Setter Property="Background" Value="{DynamicResource CheckupGroupHeaderBackground}"/>
             <Setter Property="Foreground" Value="{DynamicResource CheckupSecondaryText}"/>
+            <Setter Property="Cursor"     Value="Hand"/>
+            <!-- Left-click the row number → select the whole row (spreadsheet-style).
+                 DataGridRowHeader is a ButtonBase — use Click (MouseLeftButtonUp is swallowed
+                 internally by the header's own selection handling). -->
+            <EventSetter Event="Click" Handler="RowHeader_Click"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="DataGridRowHeader">

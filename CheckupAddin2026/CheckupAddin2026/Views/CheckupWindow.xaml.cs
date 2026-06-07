@@ -835,9 +835,11 @@ namespace CheckupAddIn.Views
             Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() =>
             {
                 _fieldSelectorPopupBorder = FindVisualChild<Border>(popup.Child);
-                if (_fieldSelectorPopupBorder == null) return;
                 // Width is auto-sized to content (longest entry) — never set a fixed width.
-                if (_fieldSelectorDropdownHeight > 0) _fieldSelectorPopupBorder.Height = _fieldSelectorDropdownHeight;
+                if (_fieldSelectorPopupBorder != null && _fieldSelectorDropdownHeight > 0)
+                    _fieldSelectorPopupBorder.Height = _fieldSelectorDropdownHeight;
+                // Grab keyboard focus into the search box so typing filters instantly (matches 2024).
+                FindVisualChild<System.Windows.Controls.TextBox>(popup.Child)?.Focus();
             }));
         }
 

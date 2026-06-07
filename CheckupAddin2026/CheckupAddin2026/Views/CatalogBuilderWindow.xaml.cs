@@ -54,9 +54,11 @@ namespace CheckupAddIn.Views
             set { _sortDir = value; OnPropertyChanged(nameof(SortArrow)); }
         }
 
+        // Always shows a caret so the clickable sort zone is discoverable: ⇅ when unsorted,
+        // ▲/▼ when this column is the active sort. (Click handled by ColumnHeader_Click caret zone.)
         public string SortArrow =>
-            _sortDir == ListSortDirection.Ascending  ? " ▲" :
-            _sortDir == ListSortDirection.Descending ? " ▼" : "";
+            _sortDir == ListSortDirection.Ascending  ? "▲" :
+            _sortDir == ListSortDirection.Descending ? "▼" : "⇅";
 
         public ColumnRole Role
         {
@@ -843,9 +845,15 @@ namespace CheckupAddIn.Views
 
         private void CtxDeleteRow_Click(object sender, RoutedEventArgs e)
         {
-            SyncSelectionToVm();
+            if (_vm == null) return;
+            // Collect every distinct selected row (single or multi-select) BEFORE clearing selection.
+            var rows = EntryGrid.SelectedCells
+                .Select(c => c.Item as EntryRow)
+                .Where(r => r != null)
+                .Distinct()
+                .ToList();
             EntryGrid.UnselectAllCells();
-            _vm?.RemoveEntryCommand.Execute(null);
+            if (rows.Count > 0) _vm.RemoveEntries(rows);
         }
 
         private void CtxInsertColLeft_Click(object sender, RoutedEventArgs e)
@@ -867,9 +875,16 @@ namespace CheckupAddIn.Views
 
         private void CtxDeleteCol_Click(object sender, RoutedEventArgs e)
         {
-            SyncSelectionToVm();
+            if (_vm == null) return;
+            // Collect every distinct selected column (single or multi-select) BEFORE clearing selection.
+            var cols = EntryGrid.SelectedCells
+                .Select(c => c.Column?.Header is ColumnHeaderData hd
+                    ? _vm.CurrentColumns.FirstOrDefault(cc => cc.Label == hd.Label) : null)
+                .Where(c => c != null)
+                .Distinct()
+                .ToList();
             EntryGrid.UnselectAllCells();
-            _vm?.DeleteColumnCommand.Execute(null);
+            if (cols.Count > 0) _vm.DeleteColumns(cols);
         }
 
         private void CtxSortAZ_Click(object sender, RoutedEventArgs e) => TriggerContextMenuSort(ascending: true);
@@ -1176,15 +1191,138 @@ namespace CheckupAddIn.Views
         //  Position check excludes the resize-gripper zone (right edge)
         // ══════════════════════════════════════════════
 
+        // Width of the clickable sort-caret zone at the header's right edge (just left of the
+        // resize gripper). Spreadsheet model: caret = sort, rest of the header = select column.
+        private const double SortCaretZoneWidth = 22;
+
+        // Anchors for Shift+click range selection (spreadsheet-style).
+        private DataGridColumn _colSelectAnchor;
+        private int            _rowSelectAnchor = -1;
+
         private void ColumnHeader_Click(object sender, RoutedEventArgs e)
         {
             if (_vm == null || sender is not DataGridColumnHeader header) return;
-            if (IsGripperClick(header)) return;
+            if (IsGripperClick(header)) return;                 // right-edge resize zone — DataGrid handles
             if (header.Content is not ColumnHeaderData hd) return;
             var col = _vm.CurrentColumns.FirstOrDefault(c => c.Label == hd.Label);
             if (col == null) return;
+
+            if (IsSortCaretClick(header))
+            {
+                // Sort caret → sort by this column; repeat clicks toggle direction.
+                // CRASH GUARD: clear the selection BEFORE the sort mutates the row collection —
+                // a stale multi-cell selection across reordered rows crashes the DataGrid
+                // (dotnet/wpf #4279). The context-menu sort path does the same.
+                _vm.SelectedColumn = col;
+                EntryGrid.UnselectAllCells();
+                ApplySortAndUpdateArrows(col.Key, _vm.SortByColumnKey(col.Key));
+                return;
+            }
+
+            // Header body → select the whole column (spreadsheet-style).
+            if (IsShiftDown() && _colSelectAnchor != null)
+            {
+                SelectColumnRange(_colSelectAnchor, header.Column);          // Shift = range from anchor
+            }
+            else
+            {
+                SelectWholeColumn(header.Column, additive: IsCtrlDown());    // plain = replace, Ctrl = add
+                _colSelectAnchor = header.Column;
+            }
             _vm.SelectedColumn = col;
-            ApplySortAndUpdateArrows(col.Key, _vm.SortByColumnKey(col.Key));
+        }
+
+        // The clickable sort-caret zone sits just left of the resize gripper at the right edge.
+        private static bool IsSortCaretClick(DataGridColumnHeader header)
+        {
+            double x = Mouse.GetPosition(header).X;
+            return x >= header.ActualWidth - GripperWidth - SortCaretZoneWidth
+                && x <  header.ActualWidth - GripperWidth;
+        }
+
+        private static bool IsCtrlDown() =>
+            (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
+
+        private static bool IsShiftDown() =>
+            (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
+
+        // Selects every data cell in the given column (spreadsheet whole-column select).
+        private void SelectWholeColumn(DataGridColumn dgColumn, bool additive)
+        {
+            if (dgColumn == null) return;
+            if (!additive) EntryGrid.UnselectAllCells();
+            foreach (var item in EntryGrid.Items)
+                if (item is EntryRow)
+                    EntryGrid.SelectedCells.Add(new DataGridCellInfo(item, dgColumn));
+            FocusGridForKeyboard();
+        }
+
+        // Selects every cell across the columns between two headers (Shift+click range).
+        private void SelectColumnRange(DataGridColumn from, DataGridColumn to)
+        {
+            if (from == null || to == null) { SelectWholeColumn(to ?? from, additive: false); return; }
+            int a = from.DisplayIndex, b = to.DisplayIndex;
+            if (a > b) { (a, b) = (b, a); }
+            EntryGrid.UnselectAllCells();
+            foreach (var dgCol in EntryGrid.Columns)
+                if (dgCol.DisplayIndex >= a && dgCol.DisplayIndex <= b)
+                    foreach (var item in EntryGrid.Items)
+                        if (item is EntryRow)
+                            EntryGrid.SelectedCells.Add(new DataGridCellInfo(item, dgCol));
+            FocusGridForKeyboard();
+        }
+
+        // Selects every cell in the given row (spreadsheet whole-row select).
+        private void SelectWholeRow(object rowItem, bool additive)
+        {
+            if (rowItem is not EntryRow) return;
+            if (!additive) EntryGrid.UnselectAllCells();
+            foreach (var dgCol in EntryGrid.Columns)
+                EntryGrid.SelectedCells.Add(new DataGridCellInfo(rowItem, dgCol));
+            FocusGridForKeyboard();
+        }
+
+        // Selects every cell across the rows between two indices (Shift+click range).
+        private void SelectRowRange(int fromIndex, int toIndex)
+        {
+            if (fromIndex > toIndex) { (fromIndex, toIndex) = (toIndex, fromIndex); }
+            EntryGrid.UnselectAllCells();
+            for (int i = fromIndex; i <= toIndex; i++)
+            {
+                if (i < 0 || i >= EntryGrid.Items.Count) continue;
+                if (EntryGrid.Items[i] is not EntryRow item) continue;
+                foreach (var dgCol in EntryGrid.Columns)
+                    EntryGrid.SelectedCells.Add(new DataGridCellInfo(item, dgCol));
+            }
+            FocusGridForKeyboard();
+        }
+
+        // After a header-driven selection, move keyboard focus into the grid (deferred until the
+        // header click finishes) so Del → EntryGrid_PreviewKeyDown → Clear Contents works.
+        private void FocusGridForKeyboard() =>
+            EntryGrid.Dispatcher.BeginInvoke(new Action(() => EntryGrid.Focus()),
+                System.Windows.Threading.DispatcherPriority.Input);
+
+        // Left-click on a row-number header → select the whole row. Ctrl adds, Shift = range.
+        // Uses the Click event (DataGridRowHeader is a ButtonBase): MouseLeftButtonUp is swallowed
+        // by the header's internal selection handling, so an EventSetter on it never fires.
+        private void RowHeader_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not DataGridRowHeader rh) return;
+            var row = rh.DataContext as EntryRow
+                   ?? FindVisualParent<DataGridRow>(rh)?.Item as EntryRow;
+            if (row == null) return;
+            int idx = EntryGrid.Items.IndexOf(row);
+
+            if (IsShiftDown() && _rowSelectAnchor >= 0)
+            {
+                SelectRowRange(_rowSelectAnchor, idx);
+            }
+            else
+            {
+                SelectWholeRow(row, additive: IsCtrlDown());
+                _rowSelectAnchor = idx;
+            }
         }
 
         private void ApplySortAndUpdateArrows(string colKey, bool ascending)
