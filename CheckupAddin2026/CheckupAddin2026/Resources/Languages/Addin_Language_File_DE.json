@@ -61,6 +61,7 @@
 
   "Btn_CatalogPicker": "📋",
   "Tip_CatalogPicker": "Katalog öffnen",
+  "Tip_FormulaToggle": "Formel hinter diesem Wert anzeigen / bearbeiten (fx)",
   "CatalogPicker_Title": "Katalog-Auswahl",
   "CatalogPicker_All": "Alle",
   "CatalogPicker_Selection": "Auswahl:",
@@ -274,6 +275,7 @@
   "Msg_ImportFailed": "Import fehlgeschlagen: {0}",
   "Msg_ResetDone": "Zurückgesetzt – {0}",
   "Msg_NoDocForWrite": "Kein Dokument verfügbar.",
+  "Msg_FormulaTargetUnresolved": "Das Zielfeld der Formel konnte nicht aufgelöst werden (unterbrochene oder zirkuläre Logikkette).",
 
   "Dlg_DemoWarning_Title": "Demo-Modus aktiv",
   "Dlg_DemoWarning_Body":  "Das Add-In läuft mit der Demo-Standardkonfiguration.\n\nDie Demo-Logikgruppen schreiben Werte direkt in das aktive Dokument (Darstellung, Material, Beschreibung usw.). Zum Testen ein neues leeres Dokument verwenden, um echte Dokumente nicht zu verändern.\n\nDieser Hinweis verschwindet, sobald mindestens ein Preset mit einem neuen Namen und einer eigenen Feldkonfiguration gespeichert wurde.\n\nTipp: Rechtsklick auf einen Preset-Button → Preset speichern.",
@@ -286,6 +288,7 @@
   "Info_Main_Title":      "Kurzanleitung",
   "Info_Main_Intro":      "Objekt (IPT / IAM) wählen → Werte aktualisieren sich automatisch bei Dokumentwechsel.",
   "Info_Main_Edit":       "Auf einen Wert klicken → Wert inline bearbeiten → OK.",
+  "Info_Main_Formula":    "ƒx-Schaltfläche → der Wert stammt aus einer Inventor-Formel (iProperty-Ausdruck oder Parametergleichung); ƒx drücken, um die dahinterliegende Gleichung anzuzeigen und zu bearbeiten.",
   "Info_Main_MiterGap":   "sucht die 2te Lasche im Modellbrowser und fügt zur Kontrolle die Laschenlänge als neue Zeile hinzu.",
   "Info_Main_RightClick": "Rechtsklick auf Wertfeld → Wert in Zwischenablage kopieren.",
   "Info_Main_Drag":       "Zeilen per Drag & Drop sortierbar.",

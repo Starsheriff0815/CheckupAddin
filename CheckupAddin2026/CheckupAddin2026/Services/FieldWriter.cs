@@ -48,6 +48,80 @@ namespace CheckupAddIn.Services
             }
         }
 
+        /// <summary>
+        /// True when <paramref name="value"/> is an Inventor iProperty expression — i.e. it
+        /// starts with '='. Inventor itself uses the leading '=' to distinguish a formula
+        /// (e.g. "=&lt;Width&gt; x &lt;Height&gt;") from a literal text value.
+        /// </summary>
+        internal static bool LooksLikeFormula(string value) =>
+            !string.IsNullOrEmpty(value) && value.TrimStart().StartsWith("=", StringComparison.Ordinal);
+
+        /// <summary>
+        /// Writes a value to a text iProperty, preserving Inventor's formula semantics.
+        ///
+        /// Literal write (no leading '='): sets Property.Value directly — this replaces any
+        /// existing expression with the fixed text, exactly as Inventor's own dialog does.
+        ///
+        /// Formula write (leading '='): the precise API path is not yet confirmed for
+        /// Inventor 2026, so we probe two routes and log which one takes (DiagLogger "fx"):
+        ///   1) Property.Expression = "=…"   (late-bound; preferred if supported)
+        ///   2) Property.Value      = "=…"   (dialog-equivalent fallback — Inventor parses
+        ///                                     a leading '=' in Value into an expression)
+        /// Returns null on success or an error string.
+        /// </summary>
+        private static string SetPropertyValueOrFormula(Property prop, string value, bool isFormula, string setName, string propName)
+        {
+            if (!isFormula)
+            {
+                prop.Value = value;
+                return null;
+            }
+
+            // Probe 1: Property.Expression (late-bound to avoid a hard interop dependency).
+            try
+            {
+                Microsoft.VisualBasic.Interaction.CallByName(
+                    prop, "Expression", Microsoft.VisualBasic.CallType.Let, value);
+                string back = TryReadExpression(prop);
+                if (LooksLikeFormula(back))
+                {
+                    DiagLogger.Log("fx", $"WRITE formula via Property.Expression OK — '{DiagLogger.S(setName)}.{DiagLogger.S(propName)}' = '{DiagLogger.S(value)}' (read-back '{DiagLogger.S(back)}')");
+                    return null;
+                }
+                DiagLogger.Log("fx", $"Property.Expression set on '{DiagLogger.S(setName)}.{DiagLogger.S(propName)}' but read-back '{DiagLogger.S(back)}' is not an expression — trying Value path");
+            }
+            catch (Exception ex)
+            {
+                DiagLogger.Log("fx", $"Property.Expression failed on '{DiagLogger.S(setName)}.{DiagLogger.S(propName)}': {DiagLogger.S(ex.Message)} — trying Value path");
+            }
+
+            // Probe 2: Property.Value = "=…" (dialog-equivalent).
+            try
+            {
+                prop.Value = value;
+                string back = TryReadExpression(prop);
+                DiagLogger.Log("fx", $"WRITE formula via Property.Value — '{DiagLogger.S(setName)}.{DiagLogger.S(propName)}' = '{DiagLogger.S(value)}' → Value '{DiagLogger.S(prop.Value?.ToString())}', Expression '{DiagLogger.S(back)}'");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                DiagLogger.Log("fx", $"Property.Value formula write failed on '{DiagLogger.S(setName)}.{DiagLogger.S(propName)}': {DiagLogger.S(ex.Message)}");
+                return $"Could not set formula on '{propName}': {ex.Message}";
+            }
+        }
+
+        /// <summary>Reads Property.Expression via late binding; returns "" if unsupported or empty.</summary>
+        internal static string TryReadExpression(Property prop)
+        {
+            try
+            {
+                object o = Microsoft.VisualBasic.Interaction.CallByName(
+                    prop, "Expression", Microsoft.VisualBasic.CallType.Get);
+                return o?.ToString() ?? "";
+            }
+            catch { return ""; }
+        }
+
         private string WriteUserDefinedProperty(Document doc, string propName, string value)
         {
             // Enumerate exactly like PropertyReader: match by DisplayName/Name, not by fixed string index.
@@ -81,10 +155,17 @@ namespace CheckupAddIn.Services
             try
             {
                 string before = target.Value?.ToString() ?? "(null)";
-                target.Value = value;
-                string after = target.Value?.ToString() ?? "(null)";
-                if (!string.Equals(after, value, StringComparison.Ordinal))
-                    return $"Type mismatch or read-only: set='{value}', read-back='{after}' (was '{before}'). Set '{foundSet}'.";
+                bool isFormula = LooksLikeFormula(value);
+                string err = SetPropertyValueOrFormula(target, value, isFormula, foundSet, propName);
+                if (err != null) return err;
+                // Read-back verification only applies to literal writes — a formula's Value
+                // evaluates to a different display string than the "=…" expression we set.
+                if (!isFormula)
+                {
+                    string after = target.Value?.ToString() ?? "(null)";
+                    if (!string.Equals(after, value, StringComparison.Ordinal))
+                        return $"Type mismatch or read-only: set='{value}', read-back='{after}' (was '{before}'). Set '{foundSet}'.";
+                }
                 return null;
             }
             catch (Exception ex) { return $"Set '{foundSet}', prop '{propName}': {ex.Message}"; }
@@ -126,8 +207,9 @@ namespace CheckupAddIn.Services
                     }
                 }
                 if (ps == null) return $"Property '{propName}' not found in any property set.";
-                ps[propName].Value = value;
-                return null;
+                string setName = "";
+                try { setName = ps.DisplayName ?? ps.Name ?? "?"; } catch { setName = "?"; }
+                return SetPropertyValueOrFormula(ps[propName], value, LooksLikeFormula(value), setName, propName);
             }
             catch (Exception ex) { return ex.Message; }
         }
@@ -144,22 +226,37 @@ namespace CheckupAddIn.Services
             else
                 return $"Parameter write not supported for document type {doc.DocumentType}.";
 
-            // Set the expression on whichever collection owns the parameter.
-            // Do NOT call Update() inside these try blocks — a failed lookup leaves
-            // COM in a partially dirty state, and a second Update() in the fallback crashes Inventor.
-            string setErr = TrySetExpression(prms, paramName, expr);
-            if (setErr != null) return setErr;
+            // Suppress Inventor's own "Invalid Value" modal so a rejected equation surfaces as our
+            // in-place red text / status line instead of a blocking dialog. The COM call still
+            // throws on a bad expression — we catch it below. Restored in finally so we never leave
+            // Inventor in a silent state, even if Update() throws.
+            bool prevSilent = false;
+            bool silentSet  = false;
+            try { prevSilent = _app.SilentOperation; _app.SilentOperation = true; silentSet = true; } catch { }
 
-            // Update exactly once, after a confirmed successful expression assignment.
             try
             {
-                if (doc.DocumentType == DocumentTypeEnum.kPartDocumentObject)
-                    ((PartDocument)doc).Update();
-                else
-                    ((AssemblyDocument)doc).Update();
-                return null;
+                // Set the expression on whichever collection owns the parameter.
+                // Do NOT call Update() inside these try blocks — a failed lookup leaves
+                // COM in a partially dirty state, and a second Update() in the fallback crashes Inventor.
+                string setErr = TrySetExpression(prms, paramName, expr);
+                if (setErr != null) return setErr;
+
+                // Update exactly once, after a confirmed successful expression assignment.
+                try
+                {
+                    if (doc.DocumentType == DocumentTypeEnum.kPartDocumentObject)
+                        ((PartDocument)doc).Update();
+                    else
+                        ((AssemblyDocument)doc).Update();
+                    return null;
+                }
+                catch (Exception ex) { return $"Expression set OK but Update failed: {ex.Message}"; }
             }
-            catch (Exception ex) { return $"Expression set OK but Update failed: {ex.Message}"; }
+            finally
+            {
+                if (silentSet) { try { _app.SilentOperation = prevSilent; } catch { } }
+            }
         }
 
         private static string TrySetExpression(Parameters prms, string paramName, string expr)

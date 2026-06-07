@@ -49,6 +49,10 @@ namespace CheckupAddIn.Models
         private bool _suppressFilterOnLoad;         // true during SetEditTextSuppressFilter — prevents auto-filter on edit entry
         private bool _isExpertPendingApply;
         private string _expertComputedValue;
+        private bool _hasFormula;
+        private string _formulaText = "";
+        private bool _isFormulaEditing;
+        private bool _isFormulaInvalid;
 
         /// <summary>Field key — determines which Inventor value this row reads/writes (see FieldItem key conventions).</summary>
         public string FieldKey
@@ -122,7 +126,7 @@ namespace CheckupAddIn.Models
         public bool IsInlineEditing
         {
             get => _isInlineEditing;
-            set { _isInlineEditing = value; OnPropertyChanged(); NotifyEditModeChanged(); if (!value) { IsSyncProposal = false; _isAllowedValuesPopupOpen = false; } }
+            set { _isInlineEditing = value; OnPropertyChanged(); NotifyEditModeChanged(); if (!value) { IsSyncProposal = false; _isAllowedValuesPopupOpen = false; _isFormulaEditing = false; _isFormulaInvalid = false; OnPropertyChanged(nameof(IsFormulaEditing)); OnPropertyChanged(nameof(IsFormulaEditMode)); OnPropertyChanged(nameof(IsFormulaInvalid)); } OnPropertyChanged(nameof(ShowFormulaToggle)); }
         }
 
         /// <summary>Set by the sync logic when this edit was proposed automatically after the partner row was applied.
@@ -151,13 +155,13 @@ namespace CheckupAddIn.Models
         public bool IsTextEditMode => IsEditMode && !HasAllowedValues;
 
         /// <summary>Edit mode for list fields (has AllowedValues), excluding Halbzeug and Logic-dropdown rows.</summary>
-        public bool IsComboEditMode => IsEditMode && HasAllowedValues && !IsHalbzeugRow && !HasCatalogDropdownItems;
+        public bool IsComboEditMode => IsEditMode && HasAllowedValues && !IsHalbzeugRow && !HasCatalogDropdownItems && !_isFormulaEditing;
 
         /// <summary>Edit mode for plain free-text fields (no AllowedValues, non-Halbzeug, non-Logic-dropdown).</summary>
-        public bool IsPlainTextEditMode => IsEditMode && !HasAllowedValues && !IsHalbzeugRow && !HasCatalogDropdownItems;
+        public bool IsPlainTextEditMode => IsEditMode && !HasAllowedValues && !IsHalbzeugRow && !HasCatalogDropdownItems && !_isFormulaEditing;
 
         /// <summary>Edit mode for Logic rows — shows the unified Dropdown panel (arrow button always visible).</summary>
-        public bool IsLogicComboEditMode => IsEditMode && HasCatalogDropdownItems;
+        public bool IsLogicComboEditMode => IsEditMode && HasCatalogDropdownItems && !_isFormulaEditing;
 
         /// <summary>Always false — Search card no longer replaces the Dropdown panel. Search behavior is embedded in the unified panel.</summary>
         public bool IsLogicSearchEditMode => false;
@@ -171,6 +175,8 @@ namespace CheckupAddIn.Models
             set
             {
                 _editText = value ?? "";
+                // Editing the equation clears a prior "invalid" red state (user is fixing it).
+                if (_isFormulaInvalid) { _isFormulaInvalid = false; OnPropertyChanged(nameof(IsFormulaInvalid)); }
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(HasValueChanged));
                 OnPropertyChanged(nameof(IsEditValueValid));
@@ -674,6 +680,66 @@ namespace CheckupAddIn.Models
             set { _expertComputedValue = value; OnPropertyChanged(); }
         }
 
+        // ── Formula (fx) state ──
+        // Mirrors Inventor's iProperties / Fx-parameter behaviour: the row shows the evaluated
+        // value, and an fx toggle reveals/edits the formula behind it. Set on every refresh from
+        // FieldCatalogBuilder.ResolveFieldFormula.
+
+        /// <summary>True when this row's value is driven by an Inventor formula (iProperty expression
+        /// or parameter equation). Enables the fx toggle button.</summary>
+        public bool HasFormula
+        {
+            get => _hasFormula;
+            set
+            {
+                if (_hasFormula == value) return;
+                _hasFormula = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(ShowFormulaToggle));
+            }
+        }
+
+        /// <summary>The formula/equation behind the value (e.g. "=&lt;NUP_BENENNUNG&gt;" or "d3 + 10 mm").
+        /// Shown and edited only in the fx (formula) state.</summary>
+        public string FormulaText
+        {
+            get => _formulaText;
+            set { _formulaText = value ?? ""; OnPropertyChanged(); }
+        }
+
+        /// <summary>True while the fx toggle is engaged and the user is editing the formula.
+        /// Suppresses the normal value editors and shows the formula TextBox instead.</summary>
+        public bool IsFormulaEditing
+        {
+            get => _isFormulaEditing;
+            set
+            {
+                if (_isFormulaEditing == value) return;
+                _isFormulaEditing = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(IsFormulaEditMode));
+                OnPropertyChanged(nameof(ShowFormulaToggle));
+                NotifyEditModeChanged();
+            }
+        }
+
+        /// <summary>True after a formula Apply that Inventor rejected (e.g. invalid/cyclic parameter
+        /// reference). Paints the equation editor red and keeps the row in edit; cleared as soon as
+        /// the user edits the text or a valid equation applies. (Parameters only — Inventor validates
+        /// those; unknown iProperty refs are accepted-but-empty, matching Inventor.)</summary>
+        public bool IsFormulaInvalid
+        {
+            get => _isFormulaInvalid;
+            set { if (_isFormulaInvalid == value) return; _isFormulaInvalid = value; OnPropertyChanged(); }
+        }
+
+        /// <summary>Value-field shows the formula editor TextBox (fx pressed + inline editing active).</summary>
+        public bool IsFormulaEditMode => _isInlineEditing && _isFormulaEditing;
+
+        /// <summary>fx toggle button is shown: a formula is present and we are either displaying the
+        /// value or already editing the formula (never during a plain literal edit).</summary>
+        public bool ShowFormulaToggle => _hasFormula && (IsDisplayMode || _isFormulaEditing);
+
         /// <summary>True for Logic rows (Search card) — the filter text input is the edit control.</summary>
         public bool IsLogicSearchMode
         {
@@ -707,7 +773,7 @@ namespace CheckupAddIn.Models
         }
 
         /// <summary>Edit mode for Halbzeug rows — shows Halbzeug TextBox panel with optional Fix button.</summary>
-        public bool IsHalbzeugTextEditMode => IsEditMode && IsHalbzeugRow;
+        public bool IsHalbzeugTextEditMode => IsEditMode && IsHalbzeugRow && !_isFormulaEditing;
 
         /// <summary>True when the Fix button should appear: editing a Halbzeug row with a mismatch.</summary>
         public bool ShowHalbzeugFix => IsHalbzeugTextEditMode && IsHalbzeugMismatch;
@@ -773,6 +839,8 @@ namespace CheckupAddIn.Models
             OnPropertyChanged(nameof(IsValueMismatchDisplayMode));
             OnPropertyChanged(nameof(IsHalbzeugTextEditMode));
             OnPropertyChanged(nameof(ShowHalbzeugFix));
+            OnPropertyChanged(nameof(IsFormulaEditMode));
+            OnPropertyChanged(nameof(ShowFormulaToggle));
         }
 
         public event PropertyChangedEventHandler PropertyChanged;

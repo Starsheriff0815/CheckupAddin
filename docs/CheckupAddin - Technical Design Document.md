@@ -1297,6 +1297,8 @@ Applies to all **runtime value-entry** dropdown/popup controls: Field Selector p
 
 **Scope boundary:** CatalogBuilderWindow card-editor configuration dropdowns (CatalogId picker, SecRole, TooltipRole, CompanionRole, SearchRoles) are editor-time configuration controls, not runtime value-entry controls, and are NOT covered by this section. They use theme-styled WPF ComboBoxes with `AllowsTransparency="True"` on the popup for visual consistency.
 
+**Keyboard focus on open (Field Selector popup):** opening the Field Selector popup moves keyboard focus straight into the Zone-1 search box (`FindVisualChild<TextBox>(popup.Child)?.Focus()` in `FieldSelectorPopup_Opened`) so the user can type-to-filter immediately without a mouse click. **Both projects must do this** — a 2026 regression where this focus call was missing (2024 had it) was fixed during Task #25 testing.
+
 **Field width (the control in the grid):**
 
 - The dropdown field itself auto-sizes to fit its label text (the currently selected entry or placeholder).
@@ -1440,6 +1442,43 @@ Both colors follow the active theme (DarkTheme / LightTheme resource dictionarie
 
 ---
 
+### 5.16 Formula (fx) Editing — iProperty Expressions & Parameter Equations
+
+**Status:** Implemented in both projects (2026 + 2024), tested in Inventor 2026 and 2024. Diagnostics tagged `"fx"` (disabled by default).
+
+Inventor lets text iProperties and parameters be **formula-driven**: an iProperty holds an expression like `=<NUP_BENENNUNG> <NUP_ABMESSUNG>` (leading `=`, parameter/property names in `<…>`), and a parameter holds an equation like `d3 + 10 mm`. Editing the displayed *value* of such a field silently destroys the formula. This feature mirrors Inventor's own behaviour: the row shows the **evaluated value**, and an **fx toggle** reveals/edits the **formula** behind it.
+
+**Two visual states (per row, mirroring the iProperties dialog):**
+
+| State | Value field shows | fx button |
+|-------|-------------------|-----------|
+| Read (default) | evaluated value (e.g. `Winkel 50x50`, `120 mm`) | `ƒx` — normal |
+| Formula (fx pressed) | editable equation (`=<…>` or `d3 + 10 mm`) | `ƒx` — engaged (active-preset colors) |
+
+**Read/Write semantics:**
+
+- **iProperty value** = `Property.Value` (evaluated text). **iProperty formula** = `Property.Expression` (starts with `=`, empty when literal). Read via late binding (`CallByName(prop,"Expression",Get)`) so a missing member can't break the build.
+- **Write** (`FieldWriter.SetPropertyValueOrFormula`): a literal (`no leading =`) is written to `Property.Value`, replacing any expression — **no warning, by design** (matches Inventor; the user is expected to notice the fx button). A formula (`leading =`) is probed in order **1) `Property.Expression =` 2) `Property.Value = "=…"`**, logging which path takes. The read-back verification is skipped for formula writes (a formula's `Value` evaluates to a different string than the `=…` expression).
+- **Parameters are value-first now (behaviour change):** `PARAM:` rows display the **evaluated value** (`PropertyReader.ReadParameterValue` → `UnitsOfMeasure.GetStringFromValue` + unit token) instead of the raw expression. The equation is revealed via fx. A PARAM row offers fx only when the expression is genuinely formula-driven (`PropertyReader.IsParameterFormula` — references another parameter or contains arithmetic), not for plain literals like `120 mm`. Writes still go through `Parameter.Expression` (existing path), so both literal and equation edits round-trip.
+
+**State model (`RowModel`):** `HasFormula` (formula present → show fx), `FormulaText` (the equation), `IsFormulaEditing` (fx engaged). `ShowFormulaToggle = HasFormula && (IsDisplayMode || IsFormulaEditing)`. While `IsFormulaEditing`, the normal value editors (`IsPlainTextEditMode` / `IsComboEditMode` / `IsLogicComboEditMode` / `IsHalbzeugTextEditMode`) are suppressed and `IsFormulaEditMode` shows a monospace formula `TextBox`. Apply/Cancel reuse the standard `HasValueChanged` path.
+
+**Resolution:** `FieldCatalogBuilder.ResolveFieldFormula(fieldKey, doc)` returns the equation (or `""`). Computed only in **single-selection** (formulas are per-document; multi-select hides fx). Refreshed every `DoRefresh` via `CheckupViewModel.UpdateFormulaState`.
+
+**Layout:** the fx button shares the value-field's right-hand button slot (Col 1, sub-col 1) — rightmost element, mutually exclusive per row with the catalog-picker button. The formula editor spans only sub-col 0 so the fx toggle stays visible to switch back. Tooltip key: `Tip_FormulaToggle`.
+
+**Scope:** `UDEF:` and `IPROP|` text iProperties and `PARAM:User:` / `PARAM:Model:` parameters. Halbzeug / DOC rows never offer fx. Perf note: detection adds one expression read per value-bearing row per refresh in single-selection (acceptable for ≤30 rows; revisit if profiling shows cost).
+
+**Logic rows (`SPECIAL:LOGIC:`) — fx beside the Window-Picker.** A logic row offers fx when its **target field** is equation-driven, so a Button-card row over an equation gives the user three exits: **fx** (edit the equation), **inline override** (type a static value), **Window-Picker** (insert a static catalog value). The picker and fx sit **side by side** in the value-field's right slot (a horizontal stack; each independently visible).
+
+- **Detection:** `ResolveFieldFormula` follows the group's `TargetFieldKey` with the **same cycle-guard** as `ResolveFieldValue` (a `SPECIAL:LOGIC:` chain `A→B→A` would otherwise stack-overflow → Inventor crash). On a cycle it returns `""` (no fx); the value path still raises `⚠ Zirkelschluss`.
+- **Carve-out:** fx is suppressed when the group **auto-owns its target** — a BasicLogic card writing to it (`CardEngine.HasBasicLogicWritingTo`) or an Expert auto-eval group (`CardGroup.IsExpert`) — because that target is recomputed every refresh and a hand-edited equation would be clobbered.
+- **Write:** `ApplyFormulaEdit` writes the raw equation to the **terminal real field** (`ResolveTerminalFieldKey` walks the alias chain, cycle-guarded), **bypassing** the logic-card transforms (PrefixSuffix/Sort/BasicLogic) that decorate a normal logic Apply. The static paths (inline/picker) still go through the logic pipeline.
+
+**Invalid equation → red text (parameters only, decision B).** On Apply, if `FieldWriter` returns an error (Inventor rejects the expression — e.g. `d1 + d2` with `d1` missing, or a circular parameter reference), the row **stays in edit** with `RowModel.IsFormulaInvalid = true`, painting the equation editor red (foreground + border, via a Style trigger — *not* a local value, which would outrank it) and surfacing the message. Cleared on the next keystroke or a successful Apply. This relies on Inventor's own validation: **parameters** throw on a bad expression; **iProperty** unknown `<refs>` are accepted-but-empty (exactly as Inventor's own dialog behaves), so there's no error to redden there. `FieldWriter.WriteParameter` wraps the write in `Application.SilentOperation = true` (restored in `finally`) so Inventor's native **"Invalid Value" modal is suppressed** — the rejection still throws and drives the red text instead of a blocking dialog.
+
+---
+
 ## 6. Design Decisions
 
 ### 6.1 Architecture decisions
@@ -1530,11 +1569,13 @@ The Catalog Editor is deliberately designed to **mimic standard spreadsheet beha
 
 - **Keyboard shortcuts** follow spreadsheet conventions: Ctrl+C copy, Ctrl+X cut, Ctrl+V paste, Ctrl+D fill down, Ctrl+R fill right, Del clear contents — not Inventor-style or WPF-default shortcuts.
 - **Fill operations** (Fill Down same value, Fill Down series, Fill Right same value, Fill Right series) match spreadsheet Fill behavior exactly, including step-auto-detect for series.
-- **Sort** (A→Z / Z→A) matches spreadsheet sort: single-click header = temporary sort of all rows; context menu sort = persistent, marks dirty, supports partial-range selection.
+- **Sort** (A→Z / Z→A, Task #27): click the **sort caret** at the right edge of a column header to sort; click again to toggle direction (`⇅` unsorted, `▲`/`▼` active). The caret is the *only* header click that sorts — clicking the header **body** selects the whole column (below). Caret zone = `SortCaretZoneWidth` just left of the resize gripper (`ColumnHeader_Click` → `IsSortCaretClick`). Context-menu sort (Sort A→Z / Z→A) remains, is persistent, marks dirty, supports partial-range selection.
 - **Multi-cell selection** with Ctrl+click, Shift+click, and keyboard extension — same selection model as spreadsheet range selection.
+- **Whole-row / whole-column selection (Task #27):** left-click a **row number** selects the entire row; left-click a **column-header body** selects the entire column. **Ctrl**+click adds (multi-select); **Shift**+click selects the range from the anchor (`SelectColumnRange` / `SelectRowRange`). After a header-driven selection the grid takes keyboard focus (`FocusGridForKeyboard`, deferred) so `Del` / context **Clear Contents** clears the whole selection — exactly like Excel. Implemented by populating `SelectedCells`; the row-header click is wired via an `EventSetter Event="Click"` on the `DataGridRowHeader` style (a `MouseLeftButtonUp` EventSetter never fires — the header swallows it internally). **Crash guard:** because bulk selection makes a stale multi-cell selection easy to have around, the **sort-caret path clears the selection (`UnselectAllCells`) before sorting** — the same guard the context-menu sort uses (sorting mutates the row collection; see WPF DataGrid crash patterns).
 - **Clipboard** uses tab-separated values (TSV) so copy/paste works natively between the Catalog Editor and Excel — no custom format.
 - **Column reorder:** drag column headers — same as spreadsheet column reorder.
 - **Row numbers:** 1-based row header column — same as spreadsheet row index.
+- **Delete Row / Delete Column** (structural removal, Task #26): one context-menu label each removes the entire selected row(s) / column(s) — **single OR multiple** selection — through one VM path (`RemoveEntries(IList<EntryRow>)` / `DeleteColumns(IList<CatalogColumn>)`; the single-item delete delegates to these). **Never** separate singular/plural labels. The code-behind collects the distinct selected rows/columns from `SelectedCells` *before* `UnselectAllCells()`. **Both** row and column delete confirm once for the whole batch (Task #27 unified the guard — previously rows deleted without confirmation).
 
 **Guiding rule for new features:** When a new editing capability is requested for the Catalog Editor, the first question is *"how does a standard spreadsheet handle this?"* — implement it the same way unless there is a specific reason not to. Do not invent custom interaction patterns when a spreadsheet convention already exists.
 
@@ -1562,6 +1603,8 @@ The Catalog Editor is deliberately designed to **mimic standard spreadsheet beha
 - COM collections: use `.Item(name)` not `[name]` indexer — C# `[]` is unreliable on COM collections.
 - Active styles block `UpdateFromGlobal()` — Update Styles dialog reads on-disk state.
 - `AppContext.BaseDirectory` in COM-hosted .NET 8 points to Inventor's process dir, not add-in DLL dir. Use `typeof(SomeAddinClass).Assembly.Location` instead.
+- **`Parameter.Units` / `Parameter.Value` are COM dual-accessors** the C# compiler won't bind as plain properties (CS1545 / CS1503). Use `param.get_Units()` (returns `object`) and `Convert.ToDouble(param.Value)`. Used by `PropertyReader.ReadParameterValue` for value-first PARAM display (see §5.16).
+- **iProperty formula detection:** `Property.Expression` (the `=…` formula behind a text iProperty) is read via late binding (`CallByName(prop,"Expression",Get)`) — never a hard interop member call, so a member-shape change can't break the build. Writing a formula probes `Property.Expression =` then `Property.Value = "=…"`; see §5.16.
 
 
 ### 7.3 WPF in Inventor's process
@@ -1570,6 +1613,7 @@ The Catalog Editor is deliberately designed to **mimic standard spreadsheet beha
 - **`ItemsControl` default template** includes an inner `ScrollViewer` that Inventor's app resources override, breaking hit-testing on child elements (e.g. `Thumb` drag handles lose mouse events). Fix: always override with `<ItemsControl.Template><ControlTemplate TargetType="ItemsControl"><ItemsPresenter/></ControlTemplate></ItemsControl.Template>` on **every** `ItemsControl` inside a `Popup`. This applies to both the column-header row ItemsControl and the item-rows ItemsControl in the multi-column Logic dropdown. Never rely on the default ItemsControl template inside a Popup.
 - `ComboBox` popup: `AllowsTransparency="True"` forces GPU layered-window rendering which flips content on some GPU/driver combinations — always `False`.
 - `SelectedItem` + `SelectionUnit=Cell` on DataGrid is a hard crash (dotnet/wpf #4279/#4382). Never use.
+- **Resetting another property's backing field inside a setter requires raising *its* `PropertyChanged`.** When one setter clears a *different* property's backing field directly (e.g. `IsInlineEditing=false` resets `_isFormulaEditing`/`_isFormulaInvalid` for efficiency), any binding or `DataTrigger` on that property goes **stale** until some later unrelated notify fires. Always `OnPropertyChanged(nameof(IsFormulaEditing))` in the same block. **Symptom (Task #25):** the fx button stayed visually "pressed"/engaged until the window was reopened.
 - `UnselectAllCells()` required before `Columns.Clear()` and collection mutations.
 - Never update VM state inside `SelectedCellsChanged` handler.
 - Stale BAML: after XAML changes that don't rebuild, do Clean+Rebuild to clear.

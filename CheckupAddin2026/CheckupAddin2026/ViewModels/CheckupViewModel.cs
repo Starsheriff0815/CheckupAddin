@@ -268,6 +268,7 @@ namespace CheckupAddIn.ViewModels
         public RelayCommand CancelFieldEditCommand       { get; }
         public RelayCommand FieldSelectionChangedCommand { get; }
         public RelayCommand ApplyExpertValueCommand      { get; }
+        public RelayCommand ToggleFormulaEditCommand     { get; }
 
         private static readonly System.Windows.Media.SolidColorBrush _expertAmberBrush =
             new(System.Windows.Media.Color.FromRgb(0xD4, 0xA0, 0x17));
@@ -296,6 +297,7 @@ namespace CheckupAddIn.ViewModels
             CancelFieldEditCommand       = new RelayCommand(_ => { });
             FieldSelectionChangedCommand = new RelayCommand(_ => { });
             ApplyExpertValueCommand      = new RelayCommand(_ => { });
+            ToggleFormulaEditCommand     = new RelayCommand(_ => { });
 
             Preset1Name = "Gehrungslücke";
             Preset2Name = "Baugruppe";
@@ -469,6 +471,8 @@ namespace CheckupAddIn.ViewModels
             });
 
             ApplyExpertValueCommand      = new RelayCommand(p => { if (p is RowModel r) ApplyExpertValue(r); });
+
+            ToggleFormulaEditCommand     = new RelayCommand(p => { if (p is RowModel r) ToggleFormulaEdit(r); });
 
             // Load pinned field keys from Registry
             string pinnedRaw = UiStateStore.LoadFieldSelPinnedFields();
@@ -1054,6 +1058,11 @@ namespace CheckupAddIn.ViewModels
                 // Don't disrupt an active inline edit
                 if (row.IsInlineEditing) continue;
 
+                // fx formula state is recomputed below for value-bearing rows; reset here so
+                // SPECIAL / empty / reconfigured rows never retain a stale fx toggle.
+                row.HasFormula  = false;
+                row.FormulaText = "";
+
                 row.SelectedField = FieldCatalog.FirstOrDefault(f => f.Key == row.FieldKey);
                 if (row.SelectedField != null)
                 {
@@ -1125,6 +1134,19 @@ namespace CheckupAddIn.ViewModels
                         .Select(doc => _catalogBuilder.ResolveFieldValue(row.FieldKey, doc))
                         .ToList();
                     SetAggregatedValue(row, vals, Brushes.Black);
+
+                    // fx: detect a formula behind the value (single-selection only — formulas are per-doc).
+                    UpdateFormulaState(row);
+
+                    // A formula-driven field provably exists and is writable (we just read its
+                    // Expression), so it must never be shown as "missing" (strikethrough label) or
+                    // blocked from inline editing — even when its stored key (e.g. the 2-part form
+                    // IPROP|Description) doesn't match a 3-part catalog entry.
+                    if (row.HasFormula)
+                    {
+                        row.IsFieldMissing  = false;
+                        row.IsWritableField = true;
+                    }
 
                     if (!row.IsFieldMissing)
                     {
@@ -2027,6 +2049,116 @@ namespace CheckupAddIn.ViewModels
         }
 
         // ══════════════════════════════════════════════
+        //  FORMULA (fx) STATE + TOGGLE
+        // ══════════════════════════════════════════════
+
+        /// <summary>
+        /// Refreshes the fx (formula) state for a row: detects whether the value is driven by an
+        /// Inventor formula and, if so, stores the equation for the fx editor. Formulas are
+        /// per-document, so this resolves only in single-selection; multi-select leaves fx hidden.
+        /// </summary>
+        private void UpdateFormulaState(RowModel row)
+        {
+            if (row.IsInlineEditing) return;
+
+            string formula = "";
+            if (_selectedDocs.Count == 1)
+            {
+                try { formula = _catalogBuilder.ResolveFieldFormula(row.FieldKey, _selectedDocs[0]); }
+                catch { formula = ""; }
+            }
+
+            bool has = !string.IsNullOrEmpty(formula);
+            row.FormulaText = formula;
+            row.HasFormula  = has;
+            if (has) DiagLogger.Log("fx", $"formula on '{DiagLogger.S(row.FieldKey)}': eq='{DiagLogger.S(formula)}' value='{DiagLogger.S(row.DisplayValue)}'");
+        }
+
+        /// <summary>
+        /// fx toggle: enters formula-edit mode (revealing/editing the equation) or, when already
+        /// engaged, returns to the value display. Mirrors Inventor's fx button.
+        /// </summary>
+        private void ToggleFormulaEdit(RowModel row)
+        {
+            if (row == null) return;
+
+            if (row.IsFormulaEditing)
+            {
+                row.IsInlineEditing = false; // setter clears IsFormulaEditing
+                return;
+            }
+            if (!row.HasFormula) return;
+
+            // Close any other row that is already in edit mode.
+            foreach (var r in Rows)
+                if (r != row && r.IsInlineEditing) r.IsInlineEditing = false;
+
+            // OriginalValue before EditText so HasValueChanged is false until the user edits.
+            row.OriginalValue = row.FormulaText;
+            row.SetEditTextSuppressFilter(row.FormulaText);
+            row.IsFormulaEditing = true;
+            row.IsInlineEditing  = true;
+            DiagLogger.Log("fx", $"enter formula edit '{DiagLogger.S(row.FieldKey)}': '{DiagLogger.S(row.FormulaText)}'");
+        }
+
+        /// <summary>
+        /// Writes an fx-edited equation. The equation is sent raw to the terminal real field
+        /// (resolving through any SPECIAL:LOGIC alias chain, cycle-guarded), bypassing the logic-card
+        /// transforms. If Inventor rejects it (decision B — invalid/cyclic parameter reference), the
+        /// row stays in edit with the equation painted red instead of throwing.
+        /// </summary>
+        private void ApplyFormulaEdit(RowModel row)
+        {
+            if (!row.HasValueChanged) { row.IsInlineEditing = false; return; }
+
+            string equation = row.EditText?.Trim() ?? "";
+
+            if (_selectedDocs.Count == 0)
+            {
+                StatusMessage = LanguageLoader.Get("Msg_NoDocForWrite");
+                row.IsInlineEditing = false;
+                return;
+            }
+
+            string targetKey = _catalogBuilder.ResolveTerminalFieldKey(row.FieldKey);
+            if (string.IsNullOrEmpty(targetKey))
+            {
+                // Broken or cyclic logic chain — keep the user in edit, flag it.
+                row.IsFormulaInvalid = true;
+                StatusMessage = LanguageLoader.Get("Msg_FormulaTargetUnresolved");
+                return;
+            }
+
+            _stickyDocs = new List<Document>(_selectedDocs);
+
+            var errors = new List<string>();
+            foreach (var doc in _selectedDocs)
+            {
+                string err = _fieldWriter.WriteFieldValue(doc, targetKey, equation);
+                if (err != null)
+                {
+                    string name;
+                    try { name = System.IO.Path.GetFileName(doc.FullFileName); } catch { name = doc.DisplayName; }
+                    errors.Add($"{name}: {err}");
+                }
+            }
+
+            DiagLogger.Log("fx", $"apply formula edit row='{DiagLogger.S(row.FieldKey)}' target='{DiagLogger.S(targetKey)}' eq='{DiagLogger.S(equation)}' errors={errors.Count}");
+
+            if (errors.Count > 0)
+            {
+                // Decision B: Inventor rejected the equation → stay in edit, paint it red, show why.
+                row.IsFormulaInvalid = true;
+                StatusMessage = string.Join(" | ", errors);
+                return;
+            }
+
+            row.IsInlineEditing = false; // also clears IsFormulaEditing / IsFormulaInvalid
+            EnforceButtonRules();
+            DoRefresh();
+        }
+
+        // ══════════════════════════════════════════════
         //  FIELD EDIT (APPLY)
         // ══════════════════════════════════════════════
 
@@ -2037,6 +2169,14 @@ namespace CheckupAddIn.ViewModels
             if (row.IsMiterGapRow)
             {
                 ApplyMiterGap(row);
+                return;
+            }
+
+            // fx formula write — write the raw equation to the terminal real field, bypassing the
+            // logic-card transforms (PrefixSuffix/Sort/BasicLogic) that decorate a normal logic Apply.
+            if (row.IsFormulaEditing)
+            {
+                ApplyFormulaEdit(row);
                 return;
             }
 
@@ -2118,6 +2258,17 @@ namespace CheckupAddIn.ViewModels
             if (errors.Count > 0)
             {
                 _stickyDocs = null;
+
+                // Parameter equations are user-editable expressions — an invalid one is expected
+                // input, not an exceptional failure. Mirror the fx path: keep the row in edit, paint
+                // it red, status line only — no modal. (Other field kinds keep the explicit dialog.)
+                if (writeFieldKey.StartsWith("PARAM:", StringComparison.Ordinal))
+                {
+                    row.IsFormulaInvalid = true;
+                    StatusMessage = string.Join(" | ", errors.Select(e => $"{e.fileName}: {e.error}"));
+                    return; // stay in edit so the user can fix the equation
+                }
+
                 string details = string.Join("\n", errors.Select(e => $"  {e.fileName}: {e.error}"));
                 MessageBox.Show(
                     $"Write failed for {errors.Count} document(s):\n\n{details}",

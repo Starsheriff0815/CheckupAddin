@@ -543,10 +543,97 @@ namespace CheckupAddIn.Services
             {
                 int second = fieldKey.IndexOf(':', fieldKey.IndexOf(':') + 1);
                 if (second < 0) return "n/a";
-                return _propReader.ReadParameterExpression(doc, fieldKey[(second + 1)..]);
+                // Value-first display (the equation is revealed via the fx toggle — see ResolveFieldFormula).
+                return _propReader.ReadParameterValue(doc, fieldKey[(second + 1)..]);
             }
 
             return "n/a";
+        }
+
+        /// <summary>
+        /// Returns the Inventor formula/equation behind a field's value, or "" when the field
+        /// holds a literal. The UI uses this to decide whether to show the fx toggle and what to
+        /// edit when it is pressed. Only iProperty (UDEF/IPROP) and parameter (PARAM) fields can
+        /// be formula-driven; every other field kind returns "".
+        ///
+        /// For a SPECIAL:LOGIC: row this follows the group's TargetFieldKey (cycle-guarded) so the
+        /// fx toggle can appear next to the Window-Picker on logic rows whose target is equation-
+        /// driven — EXCEPT when the group auto-owns its target (BasicLogic writing to it, or Expert
+        /// auto-eval), where a user-edited equation would be clobbered on the next refresh.
+        /// </summary>
+        public string ResolveFieldFormula(string fieldKey, Document doc)
+            => ResolveFieldFormulaWithCycleGuard(fieldKey, doc, null);
+
+        private string ResolveFieldFormulaWithCycleGuard(string fieldKey, Document doc, HashSet<string> visitedLogicGroups)
+        {
+            if (string.IsNullOrWhiteSpace(fieldKey) || doc == null) return "";
+
+            if (fieldKey.StartsWith("SPECIAL:LOGIC:"))
+            {
+                string groupId = fieldKey["SPECIAL:LOGIC:".Length..];
+                if (visitedLogicGroups == null) visitedLogicGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (!visitedLogicGroups.Add(groupId)) return ""; // cycle → no fx (value path raises the ⚠ warning)
+
+                var found = _capStore?.FindGroup(groupId);
+                if (found == null) return "";
+                var group = found.Value.Group;
+                if (string.IsNullOrEmpty(group.TargetFieldKey)) return "";
+
+                // Carve-out: target is auto-computed every refresh → editing its equation is futile.
+                if (group.IsExpert || CardEngine.HasBasicLogicWritingTo(group, group.TargetFieldKey))
+                    return "";
+
+                return ResolveFieldFormulaWithCycleGuard(group.TargetFieldKey, doc, visitedLogicGroups);
+            }
+
+            if (fieldKey.StartsWith("UDEF:"))
+                return _propReader.ReadUserDefinedExpression(doc, fieldKey["UDEF:".Length..]);
+
+            if (fieldKey.StartsWith("IPROP|"))
+            {
+                var parts = fieldKey.Split('|');
+                if (parts.Length >= 3)
+                {
+                    string expr = _propReader.ReadStandardExpression(doc, GetSetNameCandidates(parts[1]), new[] { parts[2] });
+                    return !string.IsNullOrEmpty(expr) ? expr : _propReader.ReadStandardExpressionByName(doc, parts[2]);
+                }
+                if (parts.Length == 2)
+                    return _propReader.ReadStandardExpressionByName(doc, parts[1]);
+                return "";
+            }
+
+            if (fieldKey.StartsWith("PARAM:User:") || fieldKey.StartsWith("PARAM:Model:"))
+            {
+                int second = fieldKey.IndexOf(':', fieldKey.IndexOf(':') + 1);
+                if (second < 0) return "";
+                string expr = _propReader.ReadParameterExpression(doc, fieldKey[(second + 1)..]);
+                return PropertyReader.IsParameterFormula(expr) ? expr : "";
+            }
+
+            return "";
+        }
+
+        /// <summary>
+        /// Walks a SPECIAL:LOGIC: key to the terminal real field key it ultimately targets
+        /// (UDEF/IPROP/PARAM/DOC), guarding against cycles. Returns the key unchanged when it is
+        /// already a real field; returns null when the chain is broken or cyclic. Used by the fx
+        /// formula write so the equation lands on the actual property/parameter, not a logic alias.
+        /// </summary>
+        public string ResolveTerminalFieldKey(string fieldKey)
+            => ResolveTerminalFieldKey(fieldKey, null);
+
+        private string ResolveTerminalFieldKey(string fieldKey, HashSet<string> visitedLogicGroups)
+        {
+            if (string.IsNullOrWhiteSpace(fieldKey)) return null;
+            if (!fieldKey.StartsWith("SPECIAL:LOGIC:")) return fieldKey;
+
+            string groupId = fieldKey["SPECIAL:LOGIC:".Length..];
+            if (visitedLogicGroups == null) visitedLogicGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (!visitedLogicGroups.Add(groupId)) return null;
+
+            var found = _capStore?.FindGroup(groupId);
+            if (found == null || string.IsNullOrEmpty(found.Value.Group.TargetFieldKey)) return null;
+            return ResolveTerminalFieldKey(found.Value.Group.TargetFieldKey, visitedLogicGroups);
         }
     }
 }
