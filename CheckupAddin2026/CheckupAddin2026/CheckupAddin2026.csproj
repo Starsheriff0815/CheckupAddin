@@ -11,7 +11,7 @@
 		<RootNamespace>CheckupAddIn</RootNamespace>
 		<AssemblyName>CheckupAddIn</AssemblyName>
 		<GenerateAssemblyInfo>true</GenerateAssemblyInfo>
-		<Version>0.10.0</Version>
+		<Version>0.11.0</Version>
 		<Author>Norman Lindner</Author>
 		<Description>Checkup for Autodesk Inventor 2026</Description>
 		<OutputPath>bin\</OutputPath>
