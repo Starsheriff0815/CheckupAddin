@@ -8,6 +8,14 @@ namespace CheckupAddIn.Services
     /// </summary>
     public class PropertyReader
     {
+        /// <summary>
+        /// Not-found / not-applicable <b>display</b> sentinel, shown in the value column.
+        /// Returned only by the <b>value</b> readers. Expression readers return <c>""</c> instead
+        /// (an expression result feeds content heuristics like <see cref="IsParameterFormula"/>,
+        /// which must never see a display string — "n/a" contains '/' and would read as division).
+        /// </summary>
+        public const string NotAvailable = "n/a";
+
         // Inventor localises PropertySet names — the same set has different internal names in
         // English vs. German installations. All known variants are tried in order.
         private static readonly string[] UserDefinedSetCandidates =
@@ -24,7 +32,7 @@ namespace CheckupAddIn.Services
         /// </summary>
         public string ReadUserDefinedProperty(Document doc, string propName)
         {
-            if (doc == null) return "n/a";
+            if (doc == null) return NotAvailable;
 
             try
             {
@@ -38,7 +46,7 @@ namespace CheckupAddIn.Services
                     }
                     catch { }
                 }
-                if (ps == null) return "n/a";
+                if (ps == null) return NotAvailable;
 
                 var p = ps[propName];
                 if (p?.Value == null) return "";
@@ -46,7 +54,7 @@ namespace CheckupAddIn.Services
             }
             catch
             {
-                return "n/a";
+                return NotAvailable;
             }
         }
 
@@ -56,7 +64,7 @@ namespace CheckupAddIn.Services
         /// </summary>
         public string ReadStandardProperty(Document doc, string[] setCandidates, string[] propCandidates)
         {
-            if (doc == null) return "n/a";
+            if (doc == null) return NotAvailable;
 
             foreach (var setName in setCandidates)
             {
@@ -75,7 +83,7 @@ namespace CheckupAddIn.Services
                     catch { }
                 }
             }
-            return "n/a";
+            return NotAvailable;
         }
 
         /// <summary>
@@ -204,7 +212,7 @@ namespace CheckupAddIn.Services
         /// </summary>
         public string ReadDocumentValue(Document doc, string tag)
         {
-            if (doc == null) return "n/a";
+            if (doc == null) return NotAvailable;
 
             try
             {
@@ -213,7 +221,7 @@ namespace CheckupAddIn.Services
                     var part = (PartDocument)doc;
                     var compDef = part.ComponentDefinition;
                     var mat = compDef.Material;
-                    return mat != null ? mat.Name : "n/a";
+                    return mat != null ? mat.Name : NotAvailable;
                 }
 
                 if (string.Equals(tag, "Appearance", StringComparison.Ordinal) && doc.DocumentType == DocumentTypeEnum.kPartDocumentObject)
@@ -222,13 +230,13 @@ namespace CheckupAddIn.Services
                     try
                     {
                         var activeAppearance = part.ActiveAppearance;
-                        string appearance = activeAppearance != null ? activeAppearance.DisplayName : "n/a";
+                        string appearance = activeAppearance != null ? activeAppearance.DisplayName : NotAvailable;
                         // Inventor returns "LibraryName: AppearanceName" — strip the library prefix.
                         if (appearance.IndexOf(':') >= 0)
                             appearance = appearance.Substring(appearance.IndexOf(':') + 1).Trim();
                         return appearance;
                     }
-                    catch { return "n/a"; }
+                    catch { return NotAvailable; }
                 }
 
                 var uom = doc.UnitsOfMeasure;
@@ -241,27 +249,30 @@ namespace CheckupAddIn.Services
                     "UnitsMass" => uom.MassUnits.ToString(),
                     "LinearPrecision" => uom.LengthDisplayPrecision.ToString(),
                     "AngularPrecision" => uom.AngleDisplayPrecision.ToString(),
-                    "ModelingDimDisplay" => "n/a",
-                    "DefaultBOMStructure" => "n/a",
-                    _ => "n/a"
+                    "ModelingDimDisplay" => NotAvailable,
+                    "DefaultBOMStructure" => NotAvailable,
+                    _ => NotAvailable
                 };
             }
             catch
             {
-                return "n/a";
+                return NotAvailable;
             }
         }
 
         /// <summary>
         /// Reads a parameter expression (user or model parameter) by name.
         /// Supports both PartDocument and AssemblyDocument.
+        /// Returns <c>""</c> when the parameter is not found — NEVER the <see cref="NotAvailable"/>
+        /// display sentinel: this result feeds <see cref="IsParameterFormula"/> (the fx heuristic),
+        /// which must never see a display string (matches the UDEF/IPROP expression readers).
         /// </summary>
         public string ReadParameterExpression(Document doc, string paramName)
         {
-            if (doc == null) return "n/a";
+            if (doc == null) return "";
 
             Parameters parameters = GetParameters(doc);
-            if (parameters == null) return "n/a";
+            if (parameters == null) return "";
 
             try
             {
@@ -277,7 +288,7 @@ namespace CheckupAddIn.Services
             }
             catch { }
 
-            return "n/a";
+            return "";
         }
 
         /// <summary>
@@ -287,10 +298,10 @@ namespace CheckupAddIn.Services
         /// </summary>
         public string ReadParameterValue(Document doc, string paramName)
         {
-            if (doc == null) return "n/a";
+            if (doc == null) return NotAvailable;
 
             Parameters parameters = GetParameters(doc);
-            if (parameters == null) return "n/a";
+            if (parameters == null) return NotAvailable;
 
             try
             {
@@ -306,7 +317,7 @@ namespace CheckupAddIn.Services
             }
             catch { }
 
-            return "n/a";
+            return NotAvailable;
         }
 
         private static Parameters GetParameters(Document doc)
@@ -362,6 +373,11 @@ namespace CheckupAddIn.Services
         {
             if (string.IsNullOrWhiteSpace(expression)) return false;
             string t = expression.Trim();
+
+            // Defense-in-depth: the display sentinel is not an expression. ReadParameterExpression
+            // already returns "" for a missing parameter, but guard here too — the '/' below would
+            // otherwise read NotAvailable ("n/a") as division and misclassify it as formula-driven.
+            if (string.Equals(t, NotAvailable, StringComparison.OrdinalIgnoreCase)) return false;
 
             // Any arithmetic operator or function call → formula.
             if (t.IndexOfAny(new[] { '+', '-', '*', '/', '^', '(', ')' }) >= 0) return true;

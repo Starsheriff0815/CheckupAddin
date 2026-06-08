@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using CheckupAddIn.Models;
 
 namespace CheckupAddIn.Services
@@ -46,7 +47,7 @@ namespace CheckupAddIn.Services
                 return new UserSettings { LoadedFrom = $"JSON not found at: {path}" };
             try
             {
-                var json     = File.ReadAllText(path);
+                var json     = NormalizeWindowsPaths(File.ReadAllText(path));
                 var settings = JsonSerializer.Deserialize<UserSettings>(json,
                     new JsonSerializerOptions { PropertyNameCaseInsensitive = true, AllowTrailingCommas = true })
                     ?? new UserSettings();
@@ -58,6 +59,21 @@ namespace CheckupAddIn.Services
                 return new UserSettings { LoadedFrom = $"JSON parse error ({path}): {ex.Message}" };
             }
         }
+
+        // Tolerate Windows paths typed with single backslashes, e.g. "Z:\Checkup\CheckupAddIn.dll".
+        // Strict JSON requires "\\" for a literal backslash; a lone "\" before a non-escape character
+        // is invalid and fails the WHOLE parse (silently reverting StylePurge + presets to defaults).
+        // This doubles any lone backslash so naive entries load, while preserving genuine escapes:
+        //   kept as-is → already-doubled "\\", escaped quote/slash "\" "\/", and unicode "\uXXXX".
+        //   doubled    → everything else, including "\t" "\n" etc. (always a path char here, never a
+        //                real tab/newline in this config), so "Z:\templates" loads correctly too.
+        // Tip for admins: forward slashes ("Z:/Checkup/x.dll") work in every Inventor path and never
+        // need escaping — the foolproof option.
+        private static readonly Regex _loneBackslash =
+            new(@"\\(u[0-9A-Fa-f]{4}|[""\\/])|\\", RegexOptions.Compiled);
+
+        internal static string NormalizeWindowsPaths(string json) =>
+            _loneBackslash.Replace(json, m => m.Groups[1].Success ? m.Value : @"\\");
 
         public class StylePurgeSection
         {

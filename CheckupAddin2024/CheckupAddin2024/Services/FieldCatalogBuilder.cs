@@ -502,7 +502,7 @@ namespace CheckupAddIn.Services
                 if (parts.Length >= 3)
                 {
                     string val = _propReader.ReadStandardProperty(doc, GetSetNameCandidates(parts[1]), new[] { parts[2] });
-                    return val != "n/a" ? val : _propReader.ReadStandardPropertyByName(doc, parts[2]);
+                    return val != PropertyReader.NotAvailable ? val : _propReader.ReadStandardPropertyByName(doc, parts[2]);
                 }
                 // 2-part: IPROP|<propName>  (short-form used in formula references and capability files)
                 if (parts.Length == 2)
@@ -516,12 +516,12 @@ namespace CheckupAddIn.Services
             if (fieldKey.StartsWith("PARAM:User:") || fieldKey.StartsWith("PARAM:Model:"))
             {
                 int second = fieldKey.IndexOf(':', fieldKey.IndexOf(':') + 1);
-                if (second < 0) return "n/a";
+                if (second < 0) return PropertyReader.NotAvailable;
                 // Value-first display (the equation is revealed via the fx toggle — see ResolveFieldFormula).
                 return _propReader.ReadParameterValue(doc, fieldKey.Substring(second + 1));
             }
 
-            return "n/a";
+            return PropertyReader.NotAvailable;
         }
 
         /// <summary>
@@ -580,6 +580,10 @@ namespace CheckupAddIn.Services
             {
                 int second = fieldKey.IndexOf(':', fieldKey.IndexOf(':') + 1);
                 if (second < 0) return "";
+                // ReadParameterExpression returns "" for a missing parameter (never the "n/a"
+                // display sentinel), so a missing PARAM row stays non-formula and keeps its
+                // greyed/strikethrough "missing" label (TDD §172). See sentinel discipline in
+                // PropertyReader / TDD §5.16.
                 string expr = _propReader.ReadParameterExpression(doc, fieldKey.Substring(second + 1));
                 return PropertyReader.IsParameterFormula(expr) ? expr : "";
             }

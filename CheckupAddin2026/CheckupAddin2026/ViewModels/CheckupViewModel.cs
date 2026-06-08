@@ -1090,7 +1090,7 @@ namespace CheckupAddIn.ViewModels
                     row.IsEditable      = false;
                     row.IsWritableField = true;
                     var vals = smData.Select(sd =>
-                        (sd.part == null || sd.flange == null) ? "n/a" :
+                        (sd.part == null || sd.flange == null) ? PropertyReader.NotAvailable :
                         TryRead(() => _smReader.CmToDisplayString(
                             _smReader.ReadMiterGapCm(sd.flange.Definition), sd.part))
                     ).ToList();
@@ -1103,7 +1103,7 @@ namespace CheckupAddIn.ViewModels
                     if (string.IsNullOrEmpty(row.FieldLabel))
                         row.FieldLabel = LanguageLoader.Get("Field_FlangeDistance");
                     var vals = smData.Select(sd =>
-                        (sd.part == null || sd.flange == null) ? "n/a" :
+                        (sd.part == null || sd.flange == null) ? PropertyReader.NotAvailable :
                         TryRead(() => _smReader.CmToDisplayString(
                             _smReader.ReadFlangeDistanceCm(sd.flange.Definition), sd.part))
                     ).ToList();
@@ -1398,7 +1398,7 @@ namespace CheckupAddIn.ViewModels
 
         private static string TryRead(Func<string> fn)
         {
-            try { return fn(); } catch { return "n/a"; }
+            try { return fn(); } catch { return PropertyReader.NotAvailable; }
         }
 
         /// <summary>
