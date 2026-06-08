@@ -15,15 +15,15 @@ jobs:
 
     steps:
       - name: Check out source code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # ── Setup ──────────────────────────────────────────────────────────────────
 
       - name: Set up MSBuild
-        uses: microsoft/setup-msbuild@v2
+        uses: microsoft/setup-msbuild@v3
 
       - name: Set up NuGet
-        uses: NuGet/setup-nuget@v2
+        uses: NuGet/setup-nuget@v4
 
       # ── 2026 Build ─────────────────────────────────────────────────────────────
 
@@ -104,7 +104,7 @@ jobs:
       # ── Create GitHub Release ──────────────────────────────────────────────────
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             CheckupAddin2026_${{ github.ref_name }}.zip
