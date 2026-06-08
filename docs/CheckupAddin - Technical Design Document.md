@@ -1465,6 +1465,8 @@ Inventor lets text iProperties and parameters be **formula-driven**: an iPropert
 
 **Resolution:** `FieldCatalogBuilder.ResolveFieldFormula(fieldKey, doc)` returns the equation (or `""`). Computed only in **single-selection** (formulas are per-document; multi-select hides fx). Refreshed every `DoRefresh` via `CheckupViewModel.UpdateFormulaState`.
 
+> **Not-found sentinel discipline (fix 2026-06-08).** Expression readers must return `""` — never the display sentinel `"n/a"` — for a missing field, because the result feeds `IsParameterFormula`. `IsParameterFormula` flags a formula on any `+ - * / ^ ( )`, and `"n/a"` contains `/`; a missing `PARAM:` row therefore read as formula-driven, which cleared `IsFieldMissing` and **blanked the greyed/strikethrough missing label of §172** (the value still showed `n/a` and a stray fx appeared). Fixed at the source: `ReadParameterExpression` returns `""` for a missing parameter (matching the UDEF/IPROP expression readers); `IsParameterFormula` also rejects a bare `n/a`. General rule: value/display sentinels (`PropertyReader.NotAvailable`) must never reach a content heuristic.
+
 **Layout:** the fx button shares the value-field's right-hand button slot (Col 1, sub-col 1) — rightmost element, mutually exclusive per row with the catalog-picker button. The formula editor spans only sub-col 0 so the fx toggle stays visible to switch back. Tooltip key: `Tip_FormulaToggle`.
 
 **Scope:** `UDEF:` and `IPROP|` text iProperties and `PARAM:User:` / `PARAM:Model:` parameters. Halbzeug / DOC rows never offer fx. Perf note: detection adds one expression read per value-bearing row per refresh in single-selection (acceptable for ≤30 rows; revisit if profiling shows cost).
