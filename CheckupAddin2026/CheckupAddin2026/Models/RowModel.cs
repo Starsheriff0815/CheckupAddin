@@ -14,13 +14,12 @@ namespace CheckupAddIn.Models
     /// Edit-mode state matrix:
     ///
     ///   IsEditable  IsInlineEditing  → IsDisplayMode  IsEditMode  IsFieldSelectorVisible
-    ///   false       false              true            false       true  (unless IsMiterGapRow)
+    ///   false       false              true            false       true
     ///   false       true               false           true        false
     ///   true        any                false           true        false
     ///
     /// IsEditable is never set to true anymore (legacy path removed).
     /// IsInlineEditing is toggled by StartInlineEditCommand / CancelFieldEditCommand / ApplyFieldEditCommand.
-    /// IsMiterGapRow suppresses the field-selector ComboBox — Gehrungslücke has no dropdown.
     /// </remarks>
     public class RowModel : INotifyPropertyChanged
     {
@@ -29,7 +28,6 @@ namespace CheckupAddIn.Models
         private string _displayValue = "";
         private System.Windows.Media.Brush _valueForeground = System.Windows.Media.Brushes.Black;
         private FieldItem _selectedField;
-        private bool _isMiterGapRow;
         private bool _isEditable;
         private bool _isInlineEditing;
         private bool _isWritableField;
@@ -67,11 +65,6 @@ namespace CheckupAddIn.Models
                 OnPropertyChanged(nameof(IsNormalDisplayMode));
                 OnPropertyChanged(nameof(IsValueMismatchDisplayMode));
                 OnPropertyChanged(nameof(IsFieldSelectorVisible));
-                OnPropertyChanged(nameof(IsHalbzeugRow));
-                OnPropertyChanged(nameof(IsHalbzeugNameRow));
-                OnPropertyChanged(nameof(IsHalbzeugIdentRow));
-                OnPropertyChanged(nameof(IsHalbzeugTextEditMode));
-                OnPropertyChanged(nameof(ShowHalbzeugFix));
                 OnPropertyChanged(nameof(IsComboEditMode));
                 if (_isExpertPendingApply)
                 {
@@ -106,13 +99,6 @@ namespace CheckupAddIn.Models
         {
             get => _selectedField;
             set { _selectedField = value; OnPropertyChanged(); }
-        }
-
-        /// <summary>True only for the Gehrungslücke row — suppresses the field-selector ComboBox.</summary>
-        public bool IsMiterGapRow
-        {
-            get => _isMiterGapRow;
-            set { _isMiterGapRow = value; OnPropertyChanged(); NotifyEditModeChanged(); }
         }
 
         /// <summary>Reserved for future use; currently always false at runtime.</summary>
@@ -154,11 +140,11 @@ namespace CheckupAddIn.Models
         /// <summary>Edit mode for free-text fields (no AllowedValues) — shows plain TextBox.</summary>
         public bool IsTextEditMode => IsEditMode && !HasAllowedValues;
 
-        /// <summary>Edit mode for list fields (has AllowedValues), excluding Halbzeug and Logic-dropdown rows.</summary>
-        public bool IsComboEditMode => IsEditMode && HasAllowedValues && !IsHalbzeugRow && !HasCatalogDropdownItems && !_isFormulaEditing;
+        /// <summary>Edit mode for list fields (has AllowedValues), excluding Logic-dropdown rows.</summary>
+        public bool IsComboEditMode => IsEditMode && HasAllowedValues && !HasCatalogDropdownItems && !_isFormulaEditing;
 
-        /// <summary>Edit mode for plain free-text fields (no AllowedValues, non-Halbzeug, non-Logic-dropdown).</summary>
-        public bool IsPlainTextEditMode => IsEditMode && !HasAllowedValues && !IsHalbzeugRow && !HasCatalogDropdownItems && !_isFormulaEditing;
+        /// <summary>Edit mode for plain free-text fields (no AllowedValues, non-Logic-dropdown).</summary>
+        public bool IsPlainTextEditMode => IsEditMode && !HasAllowedValues && !HasCatalogDropdownItems && !_isFormulaEditing;
 
         /// <summary>Edit mode for Logic rows — shows the unified Dropdown panel (arrow button always visible).</summary>
         public bool IsLogicComboEditMode => IsEditMode && HasCatalogDropdownItems && !_isFormulaEditing;
@@ -205,13 +191,12 @@ namespace CheckupAddIn.Models
         /// <summary>Apply/Cancel visible only when the user has actually changed the value.</summary>
         public bool HasValueChanged => _isInlineEditing && _editText != _originalValue;
 
-        /// <summary>False only for non-Halbzeug AllowedValues fields when EditText is not in the list.
-        /// Halbzeug rows treat AllowedValues as suggestions — any value including empty is accepted.</summary>
+        /// <summary>False only for AllowedValues fields when EditText is not in the list.</summary>
         public bool IsEditValueValid
         {
             get
             {
-                if (!HasAllowedValues || IsHalbzeugRow) return true;
+                if (!HasAllowedValues) return true;
                 foreach (string v in _allowedValues)
                     if (string.Equals(v, _editText, StringComparison.OrdinalIgnoreCase))
                         return true;
@@ -482,7 +467,7 @@ namespace CheckupAddIn.Models
             }
         }
 
-        /// <summary>False for the Gehrungslücke / 2te-Lasche pair when only two rows remain (enforced by EnforceButtonRules).</summary>
+        /// <summary>False when only one row remains (enforced by EnforceButtonRules).</summary>
         public bool CanRemove
         {
             get => _canRemove;
@@ -758,25 +743,6 @@ namespace CheckupAddIn.Models
         /// <summary>Display variant: mismatch split — matched part normal, unmatched tail red (Logic Dropdown/Search rows).</summary>
         public bool IsValueMismatchDisplayMode => IsDisplayMode && !_isMultiTokenMode && HasValueMismatch;
 
-        // ── Halbzeug (ROHTEILNAME + ROHTEILIDENT) ──
-
-        public bool IsHalbzeugNameRow  => _fieldKey == Services.FieldCatalogBuilder.FIELD_HALBZEUG_NAME;
-        public bool IsHalbzeugIdentRow => _fieldKey == Services.FieldCatalogBuilder.FIELD_HALBZEUG_IDENT;
-        public bool IsHalbzeugRow      => IsHalbzeugNameRow || IsHalbzeugIdentRow;
-
-        private bool _isHalbzeugMismatch;
-        /// <summary>True when ROHTEILNAME and ROHTEILIDENT don't correspond to the same PO=3 catalog entry.</summary>
-        public bool IsHalbzeugMismatch
-        {
-            get => _isHalbzeugMismatch;
-            set { _isHalbzeugMismatch = value; OnPropertyChanged(); OnPropertyChanged(nameof(ShowHalbzeugFix)); }
-        }
-
-        /// <summary>Edit mode for Halbzeug rows — shows Halbzeug TextBox panel with optional Fix button.</summary>
-        public bool IsHalbzeugTextEditMode => IsEditMode && IsHalbzeugRow && !_isFormulaEditing;
-
-        /// <summary>True when the Fix button should appear: editing a Halbzeug row with a mismatch.</summary>
-        public bool ShowHalbzeugFix => IsHalbzeugTextEditMode && IsHalbzeugMismatch;
 
         /// <summary>Applies a live filter to CatalogDropdownView for Search card mode.
         /// Empty text clears the filter. Items match when any SearchValue contains the text;
@@ -837,8 +803,6 @@ namespace CheckupAddIn.Models
             OnPropertyChanged(nameof(ShowValidationError));
             OnPropertyChanged(nameof(IsNormalDisplayMode));
             OnPropertyChanged(nameof(IsValueMismatchDisplayMode));
-            OnPropertyChanged(nameof(IsHalbzeugTextEditMode));
-            OnPropertyChanged(nameof(ShowHalbzeugFix));
             OnPropertyChanged(nameof(IsFormulaEditMode));
             OnPropertyChanged(nameof(ShowFormulaToggle));
         }

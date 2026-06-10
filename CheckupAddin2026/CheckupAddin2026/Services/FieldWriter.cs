@@ -15,6 +15,46 @@ namespace CheckupAddIn.Services
             _app = app;
         }
 
+        private int _batchDepth = 0;
+        private readonly HashSet<Document> _batchDirty = new();
+
+        public IDisposable BeginBatch() => new BatchScope(this);
+
+        private sealed class BatchScope : IDisposable
+        {
+            private readonly FieldWriter _fw;
+            internal BatchScope(FieldWriter fw) { _fw = fw; fw._batchDepth++; }
+            public void Dispose()
+            {
+                if (--_fw._batchDepth > 0) return;
+                var docs = new List<Document>(_fw._batchDirty);
+                _fw._batchDirty.Clear();
+                foreach (var doc in docs) _fw.TryUpdate(doc);
+            }
+        }
+
+        private void RecordOrUpdate(Document doc)
+        {
+            if (_batchDepth > 0) _batchDirty.Add(doc);
+            else TryUpdate(doc);
+        }
+
+        private void TryUpdate(Document doc)
+        {
+            bool prevSilent = false;
+            bool silentSet  = false;
+            try { prevSilent = _app.SilentOperation; _app.SilentOperation = true; silentSet = true; } catch { }
+            try
+            {
+                if (doc.DocumentType == DocumentTypeEnum.kPartDocumentObject)
+                    ((PartDocument)doc).Update();
+                else if (doc.DocumentType == DocumentTypeEnum.kAssemblyDocumentObject)
+                    ((AssemblyDocument)doc).Update();
+            }
+            catch { }
+            finally { if (silentSet) { try { _app.SilentOperation = prevSilent; } catch { } } }
+        }
+
         private static bool IsUserDefinedSet(string setName) =>
             FieldCatalogBuilder.IsUserDefinedSet(setName);
 
@@ -25,22 +65,22 @@ namespace CheckupAddIn.Services
 
             try
             {
+                string err;
                 if (fieldKey.StartsWith("UDEF:"))
-                    return WriteUserDefinedProperty(doc, fieldKey["UDEF:".Length..], newValue);
+                    err = WriteUserDefinedProperty(doc, fieldKey["UDEF:".Length..], newValue);
+                else if (fieldKey.StartsWith("IPROP|"))
+                    err = WriteStandardProperty(doc, fieldKey, newValue);
+                else if (fieldKey.StartsWith("PARAM:User:"))
+                    err = WriteParameter(doc, fieldKey["PARAM:User:".Length..], newValue);
+                else if (fieldKey.StartsWith("PARAM:Model:"))
+                    err = WriteParameter(doc, fieldKey["PARAM:Model:".Length..], newValue);
+                else if (fieldKey.StartsWith("DOC:"))
+                    err = WriteDocumentValue(doc, fieldKey["DOC:".Length..], newValue);
+                else
+                    return "Field type is not writable.";
 
-                if (fieldKey.StartsWith("IPROP|"))
-                    return WriteStandardProperty(doc, fieldKey, newValue);
-
-                if (fieldKey.StartsWith("PARAM:User:"))
-                    return WriteParameter(doc, fieldKey["PARAM:User:".Length..], newValue);
-
-                if (fieldKey.StartsWith("PARAM:Model:"))
-                    return WriteParameter(doc, fieldKey["PARAM:Model:".Length..], newValue);
-
-                if (fieldKey.StartsWith("DOC:"))
-                    return WriteDocumentValue(doc, fieldKey["DOC:".Length..], newValue);
-
-                return "Field type is not writable.";
+                if (err == null) RecordOrUpdate(doc);
+                return err;
             }
             catch (Exception ex)
             {
@@ -124,6 +164,27 @@ namespace CheckupAddIn.Services
 
         private string WriteUserDefinedProperty(Document doc, string propName, string value)
         {
+            // Inventor's "Export Parameter" feature publishes a UserParameter into the Custom
+            // iProperties tab under the same name. The iProperty is read-only (doc.Update()
+            // reverts any direct write). Detect this case and redirect to the parameter.
+            try
+            {
+                Parameters prms = null;
+                if (doc.DocumentType == DocumentTypeEnum.kPartDocumentObject)
+                    prms = ((PartDocument)doc).ComponentDefinition.Parameters;
+                else if (doc.DocumentType == DocumentTypeEnum.kAssemblyDocumentObject)
+                    prms = ((AssemblyDocument)doc).ComponentDefinition.Parameters;
+
+                if (prms != null)
+                {
+                    bool hasMatchingParam = false;
+                    try { hasMatchingParam = prms.UserParameters[propName] != null; } catch { }
+                    if (hasMatchingParam)
+                        return WriteParameter(doc, propName, value);
+                }
+            }
+            catch { }
+
             // Enumerate exactly like PropertyReader: match by DisplayName/Name, not by fixed string index.
             // doc.PropertySets["name"] may resolve by internal COM name (differs from DisplayName),
             // causing a mismatch with the set found during catalog build.
@@ -228,30 +289,18 @@ namespace CheckupAddIn.Services
 
             // Suppress Inventor's own "Invalid Value" modal so a rejected equation surfaces as our
             // in-place red text / status line instead of a blocking dialog. The COM call still
-            // throws on a bad expression — we catch it below. Restored in finally so we never leave
-            // Inventor in a silent state, even if Update() throws.
+            // throws on a bad expression — caught by TrySetExpression and returned as an error string.
+            // Restored in finally so we never leave Inventor in a silent state.
             bool prevSilent = false;
             bool silentSet  = false;
             try { prevSilent = _app.SilentOperation; _app.SilentOperation = true; silentSet = true; } catch { }
 
             try
             {
-                // Set the expression on whichever collection owns the parameter.
-                // Do NOT call Update() inside these try blocks — a failed lookup leaves
-                // COM in a partially dirty state, and a second Update() in the fallback crashes Inventor.
-                string setErr = TrySetExpression(prms, paramName, expr);
-                if (setErr != null) return setErr;
-
-                // Update exactly once, after a confirmed successful expression assignment.
-                try
-                {
-                    if (doc.DocumentType == DocumentTypeEnum.kPartDocumentObject)
-                        ((PartDocument)doc).Update();
-                    else
-                        ((AssemblyDocument)doc).Update();
-                    return null;
-                }
-                catch (Exception ex) { return $"Expression set OK but Update failed: {ex.Message}"; }
+                // Do NOT call Update() here — WriteFieldValue calls RecordOrUpdate on null return.
+                // A double Update() inside a batch scope would defeat the storm-prevention design.
+                // A failed lookup leaves COM in a partially dirty state; never Update() after a failure.
+                return TrySetExpression(prms, paramName, expr);
             }
             finally
             {

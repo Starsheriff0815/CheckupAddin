@@ -9,7 +9,6 @@ namespace CheckupAddIn.Models
     /// </summary>
     /// <remarks>
     /// Field key prefixes (used throughout the codebase):
-    ///   SPECIAL:MiterGap / SPECIAL:FlangeDistance  — computed sheet metal values
     ///   DOC:&lt;tag&gt;                                  — document-level values (Material, Appearance, …)
     ///   IPROP|&lt;setName&gt;|&lt;propName&gt;                  — standard iProperties (set identified by internal COM name)
     ///   UDEF:&lt;propName&gt;                            — user-defined iProperties (custom set, any language)

@@ -15,7 +15,6 @@ namespace CheckupAddIn.Services
             AddBullet(p, L("Info_Main_Intro"));
             AddBullet(p, L("Info_Main_Edit"));
             AddBullet(p, L("Info_Main_Formula"));
-            AddBullet(p, L("Field_MiterGap") + ": " + L("Info_Main_MiterGap"));
             AddBullet(p, L("Info_Main_RightClick"));
             AddBullet(p, L("Info_Main_Drag"));
             AddBullet(p, L("Info_Main_Preset"));

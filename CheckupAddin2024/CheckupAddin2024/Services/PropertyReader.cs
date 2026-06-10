@@ -243,7 +243,7 @@ namespace CheckupAddIn.Services
 
                 return tag switch
                 {
-                    "UnitsLength" => SheetMetalReader.UnitAbbreviation(uom.LengthUnits),
+                    "UnitsLength" => UnitAbbreviation(uom.LengthUnits),
                     "UnitsAngle" => uom.AngleUnits.ToString(),
                     "UnitsTime" => uom.TimeUnits.ToString(),
                     "UnitsMass" => uom.MassUnits.ToString(),
@@ -258,6 +258,20 @@ namespace CheckupAddIn.Services
             {
                 return NotAvailable;
             }
+        }
+
+        /// <summary>Maps an Inventor length-unit enum to its display abbreviation (mm/cm/m/in/ft).</summary>
+        private static string UnitAbbreviation(UnitsTypeEnum unit)
+        {
+            return unit switch
+            {
+                UnitsTypeEnum.kMillimeterLengthUnits => "mm",
+                UnitsTypeEnum.kCentimeterLengthUnits => "cm",
+                UnitsTypeEnum.kMeterLengthUnits => "m",
+                UnitsTypeEnum.kInchLengthUnits => "in",
+                UnitsTypeEnum.kFootLengthUnits => "ft",
+                _ => "?"
+            };
         }
 
         /// <summary>

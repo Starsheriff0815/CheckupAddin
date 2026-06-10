@@ -32,9 +32,9 @@ namespace CheckupAddIn.Services
         // Emergency fallback — only used when Checkup_Settings.json itself fails to load.
         private static readonly List<PresetData> _hardcodedFallback = new()
         {
-            new PresetData { Name = "Bauteil",       FieldKeys = new() },
-            new PresetData { Name = "Baugruppe",     FieldKeys = new() },
-            new PresetData { Name = "Gehrungslücke", FieldKeys = new() },
+            new PresetData { Name = "Bauteil",   FieldKeys = new() },
+            new PresetData { Name = "Baugruppe", FieldKeys = new() },
+            new PresetData { Name = "Allgemein", FieldKeys = new() },
         };
 
         private readonly List<PresetData> _defaults;

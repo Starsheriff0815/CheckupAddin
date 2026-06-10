@@ -51,9 +51,6 @@
     <sys:String x:Key="Grp_ParamModel">Parameter – Modell</sys:String>
 
     <sys:String x:Key="Field_None">(kein)</sys:String>
-    <sys:String x:Key="Field_MiterGap">Gehrungslücke</sys:String>
-    <sys:String x:Key="Field_FlangeDistance">2te Lasche C-Kante</sys:String>
-    <sys:String x:Key="Field_Halbzeug">Halbzeug</sys:String>
     <sys:String x:Key="Field_Material">Material</sys:String>
     <sys:String x:Key="Field_Appearance">Darstellung</sys:String>
     <sys:String x:Key="Field_UnitsLength">Einheiten (Länge)</sys:String>
