@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Shared regression suite for BOTH variants (identical-twin codebases on different frameworks):
+      net8.0-windows  -> CheckupAddin2026 (Inventor 2026)
+      net48           -> CheckupAddin2024 (Inventor 2024)
+    The same test source compiles and runs against both via the conditional ProjectReferences
+    below. A test failing on only one framework flags drift between the two projects.
+  -->
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0-windows</TargetFrameworks>
+    <!-- Add the .NET Framework 4.8 (Inventor 2024) target only when its Developer Pack is
+         installed, so cloners with only .NET 8 can still build and run the 2026 tests. -->
+    <TargetFrameworks Condition="Exists('$(MSBuildProgramFiles32)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8')">net8.0-windows;net48</TargetFrameworks>
+    <UseWPF>true</UseWPF>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>CheckupAddIn.Tests</RootNamespace>
+    <AssemblyName>CheckupAddIn.Tests</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
+    <ProjectReference Include="..\..\CheckupAddin2026\CheckupAddin2026\CheckupAddin2026.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <ProjectReference Include="..\..\CheckupAddin2024\CheckupAddin2024\CheckupAddin2024.csproj" />
+  </ItemGroup>
+
+</Project>

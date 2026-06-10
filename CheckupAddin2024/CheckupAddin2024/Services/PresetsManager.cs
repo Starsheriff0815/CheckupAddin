@@ -33,9 +33,9 @@ namespace CheckupAddIn.Services
 
         private static readonly List<PresetData> _hardcodedFallback = new List<PresetData>
         {
-            new PresetData { Name = "Bauteil",       FieldKeys = new List<string>() },
-            new PresetData { Name = "Baugruppe",     FieldKeys = new List<string>() },
-            new PresetData { Name = "Gehrungslücke", FieldKeys = new List<string>() },
+            new PresetData { Name = "Bauteil",   FieldKeys = new List<string>() },
+            new PresetData { Name = "Baugruppe", FieldKeys = new List<string>() },
+            new PresetData { Name = "Allgemein", FieldKeys = new List<string>() },
         };
 
         private readonly List<PresetData> _defaults;

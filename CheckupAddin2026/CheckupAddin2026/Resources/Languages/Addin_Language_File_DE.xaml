@@ -42,9 +42,6 @@
     <sys:String x:Key="Grp_ParamModel">Parameter – Modell</sys:String>
 
     <sys:String x:Key="Field_None">(kein)</sys:String>
-    <sys:String x:Key="Field_MiterGap">Gehrungslücke</sys:String>
-    <sys:String x:Key="Field_FlangeDistance">2te Lasche C-Kante</sys:String>
-    <sys:String x:Key="Field_Halbzeug">Halbzeug</sys:String>
     <sys:String x:Key="Field_Material">Material</sys:String>
     <sys:String x:Key="Field_Appearance">Darstellung</sys:String>
     <sys:String x:Key="Field_UnitsLength">Einheiten (Länge)</sys:String>
@@ -66,7 +63,6 @@
     <sys:String x:Key="Msg_NoDocument">Kein Dokument aktiv.</sys:String>
     <sys:String x:Key="Msg_Updated">Aktualisiert – {0} – {1}</sys:String>
     <sys:String x:Key="Msg_MaxRows">Maximale Zeilenanzahl ({0}) erreicht.</sys:String>
-    <sys:String x:Key="Msg_MiterGapMaxRows">Maximale Zeilenanzahl erreicht – Gehrungslücke nicht hinzugefügt.</sys:String>
     <sys:String x:Key="Msg_WriteErrors">Schreibfehler: {0} Dokument(e) fehlgeschlagen.</sys:String>
     <sys:String x:Key="Msg_PresetApplied">Preset '{0}' angewendet – {1}</sys:String>
     <sys:String x:Key="Msg_PresetSaved">Preset '{0}' gespeichert – {1}</sys:String>

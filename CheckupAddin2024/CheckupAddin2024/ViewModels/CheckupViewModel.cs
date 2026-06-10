@@ -28,16 +28,12 @@ namespace CheckupAddIn.ViewModels
     ///     → DocumentResolver resolves active/selected document
     ///     → FieldCatalogBuilder builds/caches dropdown catalog
     ///     → Each RowModel.DisplayValue is updated from FieldCatalogBuilder.ResolveFieldValue
-    ///     → Sheet metal rows (MiterGap, FlangeDistance) use SheetMetalReader
     ///
     /// Write flow (user edits a field):
     ///   StartInlineEditCommand → row.IsInlineEditing=true → user types → ApplyFieldEditCommand
     ///     → ApplyFieldEdit → FieldWriter.WriteFieldValue → DoRefresh
-    ///   MiterGap writes go via ApplyMiterGap (special parameter-match logic).
     ///
     /// Row constraints (enforced by EnforceButtonRules after every mutation):
-    ///   - MiterGap and FlangeDistance are always adjacent (MiterGap immediately above FlangeDistance).
-    ///   - Both cannot be removed when only 2 rows remain.
     ///   - Maximum MAX_ROWS rows total.
     /// </remarks>
     public class CheckupViewModel : INotifyPropertyChanged
@@ -46,7 +42,6 @@ namespace CheckupAddIn.ViewModels
         private readonly Inventor.Application _app;
         internal Inventor.Application AppInstance => _app;
         private readonly DocumentResolver     _docResolver;
-        private readonly SheetMetalReader     _smReader;
         private readonly FieldCatalogBuilder  _catalogBuilder;
         private readonly StylePurger          _stylePurger;
         private readonly PresetsManager       _presetsManager;
@@ -82,7 +77,7 @@ namespace CheckupAddIn.ViewModels
         // or switches document. Cleared only by a new non-empty selection or document activation —
         // NOT by deselect events, which Inventor fires unpredictably after document updates.
         private List<Document>           _stickyDocs = null;
-        // Documents resolved on each refresh; used by ApplyFieldEdit/ApplyMiterGap for batch writes.
+        // Documents resolved on each refresh; used by ApplyFieldEdit for batch writes.
         private List<Document>           _selectedDocs = new List<Document>();
         private const int MAX_ROWS = 30;
         // Tracks which multi-token Logic row is currently in edit mode (for per-token autocomplete).
@@ -297,21 +292,16 @@ namespace CheckupAddIn.ViewModels
 
             Preset1Name = "Bauteil";
             Preset2Name = "Baugruppe";
-            Preset3Name = "Gehrungslücke";
+            Preset3Name = "Allgemein";
 
             FieldCatalog = new List<FieldItem>
             {
                 new FieldItem("", "(kein)", "", ""),
-                new FieldItem("SPECIAL:MiterGap",      "Gehrungslücke",     "Gehrungslücke",     "Grp_SheetMetal",        true),
-                new FieldItem("SPECIAL:FlangeDistance","2te Lasche C-Kante","2te Lasche C-Kante","Grp_SheetMetal",        false),
                 new FieldItem("UDEF:ISO",              "ISO",               "ISO",               "Grp_iPropertiesCustom", true),
                 new FieldItem("DOC:Material",          "Material",          "Material",          "Grp_Document",          true),
                 new FieldItem("PARAM:User:Thickness",  "Thickness",         "Thickness",         "Grp_ParamUser",         true),
             };
 
-            Rows.Add(new RowModel { FieldKey = "SPECIAL:MiterGap",       FieldLabel = "Gehrungslücke",      IsWritableField = true, IsMiterGapRow = true,
-                                    IsInlineEditing = true, EditText = "0.12" });
-            Rows.Add(new RowModel { FieldKey = "SPECIAL:FlangeDistance",  FieldLabel = "2te Lasche C-Kante", DisplayValue = "25.000 mm", ValueForeground = Brushes.Red });
             Rows.Add(new RowModel { FieldKey = "UDEF:ISO",                FieldLabel = "ISO",                DisplayValue = "1234-567-A",  IsWritableField = true });
             Rows.Add(new RowModel { FieldKey = "DOC:Material",            FieldLabel = "Material",           DisplayValue = "Steel",       IsWritableField = true });
             Rows.Add(new RowModel { FieldKey = "PARAM:User:Thickness",    FieldLabel = "Thickness",          DisplayValue = "2.000 mm",    IsWritableField = true });
@@ -335,7 +325,6 @@ namespace CheckupAddIn.ViewModels
             UserCatalogStore    = catalogStore;
             UserCapabilityStore = capabilityStore;
             _docResolver    = new DocumentResolver(app);
-            _smReader       = new SheetMetalReader();
             _catalogBuilder = new FieldCatalogBuilder(_app, capabilityStore);
             _stylePurger    = new StylePurger(_app, settings?.StylePurge ?? new UserSettings.StylePurgeSection());
             _presetsManager = new PresetsManager(settings?.Presets);
@@ -927,19 +916,9 @@ namespace CheckupAddIn.ViewModels
             }
             else
             {
-                Rows.Add(new RowModel
-                {
-                    FieldKey        = FieldCatalogBuilder.FIELD_MITER_GAP,
-                    FieldLabel      = LanguageLoader.Get("Field_MiterGap"),
-                    IsMiterGapRow   = true,
-                    IsWritableField = true
-                });
-                Rows.Add(new RowModel
-                {
-                    FieldKey        = FieldCatalogBuilder.FIELD_FLANGE_DISTANCE,
-                    FieldLabel      = LanguageLoader.Get("Field_FlangeDistance"),
-                    ValueForeground = Brushes.Red
-                });
+                // No presets available — start with two empty, user-configurable rows.
+                Rows.Add(new RowModel());
+                Rows.Add(new RowModel());
             }
             EnforceButtonRules();
         }
@@ -1006,32 +985,6 @@ namespace CheckupAddIn.ViewModels
 
             FieldCatalog = _catalogBuilder.GetCatalog(primaryDoc);
 
-            bool needSM = Rows.Any(r =>
-                r.FieldKey == FieldCatalogBuilder.FIELD_MITER_GAP ||
-                r.FieldKey == FieldCatalogBuilder.FIELD_FLANGE_DISTANCE);
-
-            // Pre-compute sheet metal data per selected doc (null entries for non-sheet-metal docs).
-            var smData = new List<(PartDocument part, FlangeFeature flange)>();
-            if (needSM)
-            {
-                foreach (var doc in _selectedDocs)
-                {
-                    PartDocument smPart = null;
-                    FlangeFeature smFlange = null;
-                    try
-                    {
-                        if (doc is PartDocument pd &&
-                            pd.ComponentDefinition is SheetMetalComponentDefinition)
-                        {
-                            smPart = pd;
-                            smFlange = _smReader.FindSecondFlange(smPart);
-                        }
-                    }
-                    catch { }
-                    smData.Add((smPart, smFlange));
-                }
-            }
-
             foreach (var row in Rows)
             {
                 // Don't disrupt an active inline edit
@@ -1043,9 +996,7 @@ namespace CheckupAddIn.ViewModels
                 row.FormulaText = "";
 
                 row.SelectedField  = FieldCatalog.FirstOrDefault(f => f.Key == row.FieldKey);
-                row.IsFieldMissing = row.SelectedField == null && !string.IsNullOrEmpty(row.FieldKey)
-                    && !row.IsHalbzeugRow
-                    && row.FieldKey != FieldCatalogBuilder.FIELD_FLANGE_DISTANCE;
+                row.IsFieldMissing = row.SelectedField == null && !string.IsNullOrEmpty(row.FieldKey);
                 if (row.SelectedField != null)
                 {
                     row.FieldLabel      = row.SelectedField.RowLabel;
@@ -1057,35 +1008,8 @@ namespace CheckupAddIn.ViewModels
                     row.FieldLabel = DeriveFieldLabel(row.FieldKey);
                 }
 
-                if (row.FieldKey == FieldCatalogBuilder.FIELD_MITER_GAP)
+                if (string.IsNullOrEmpty(row.FieldKey))
                 {
-                    row.IsMiterGapRow   = true;
-                    row.IsEditable      = false;
-                    row.IsWritableField = true;
-                    var vals = smData.Select(sd =>
-                        (sd.part == null || sd.flange == null) ? PropertyReader.NotAvailable :
-                        TryRead(() => _smReader.CmToDisplayString(
-                            _smReader.ReadMiterGapCm(sd.flange.Definition), sd.part))
-                    ).ToList();
-                    SetAggregatedValue(row, vals, Brushes.Black);
-                }
-                else if (row.FieldKey == FieldCatalogBuilder.FIELD_FLANGE_DISTANCE)
-                {
-                    row.IsMiterGapRow = false;
-                    row.IsEditable    = false;
-                    if (string.IsNullOrEmpty(row.FieldLabel))
-                        row.FieldLabel = LanguageLoader.Get("Field_FlangeDistance");
-                    var vals = smData.Select(sd =>
-                        (sd.part == null || sd.flange == null) ? PropertyReader.NotAvailable :
-                        TryRead(() => _smReader.CmToDisplayString(
-                            _smReader.ReadFlangeDistanceCm(sd.flange.Definition), sd.part))
-                    ).ToList();
-                    // FlangeDistance is always red — pass Red as singleColor so it stays red even when uniform
-                    SetAggregatedValue(row, vals, Brushes.Red);
-                }
-                else if (string.IsNullOrEmpty(row.FieldKey))
-                {
-                    row.IsMiterGapRow   = false;
                     row.IsEditable      = false;
                     row.IsWritableField = false;
                     row.DisplayValue    = "";
@@ -1093,7 +1017,6 @@ namespace CheckupAddIn.ViewModels
                 }
                 else
                 {
-                    row.IsMiterGapRow = false;
                     row.IsEditable    = false;
 
                     if (row.IsFieldMissing)
@@ -1122,13 +1045,6 @@ namespace CheckupAddIn.ViewModels
 
                     if (!row.IsFieldMissing)
                     {
-                        if (row.IsHalbzeugRow)
-                        {
-                            row.IsWritableField = true;
-                            if (string.IsNullOrEmpty(row.FieldLabel))
-                                row.FieldLabel = row.IsHalbzeugNameRow ? "ROHTEILNAME" : "ROHTEILIDENT";
-                        }
-
                         if (row.FieldKey.StartsWith("SPECIAL:LOGIC:", StringComparison.Ordinal))
                         {
                             string lgGroupId = row.FieldKey.Substring("SPECIAL:LOGIC:".Length);
@@ -1327,7 +1243,7 @@ namespace CheckupAddIn.ViewModels
             // Post-pass: Logic mismatch detection + multi-token segment computation.
             foreach (var row in Rows)
             {
-                if (row.IsInlineEditing || row.IsHalbzeugRow) continue;
+                if (row.IsInlineEditing) continue;
                 if (row.FieldKey.StartsWith("SPECIAL:LOGIC:", StringComparison.Ordinal))
                 {
                     string pGroupId = row.FieldKey.Substring("SPECIAL:LOGIC:".Length);
@@ -1517,30 +1433,35 @@ namespace CheckupAddIn.ViewModels
             string targetKey = found.Value.Group.TargetFieldKey;
 
             _stickyDocs = new List<Document>(_selectedDocs);
-            var errors  = new List<System.Tuple<string, string>>();
-            foreach (var doc in _selectedDocs)
+            bool didWrite = false;
+            using (_fieldWriter.BeginBatch())
             {
-                string err = _fieldWriter.WriteFieldValue(doc, targetKey, row.ExpertComputedValue);
-                if (err != null)
+                var errors = new List<System.Tuple<string, string>>();
+                foreach (var doc in _selectedDocs)
                 {
-                    string name = "";
-                    try { name = System.IO.Path.GetFileName(doc.FullFileName); } catch { name = doc.DisplayName; }
-                    errors.Add(System.Tuple.Create(name, err));
+                    string err = _fieldWriter.WriteFieldValue(doc, targetKey, row.ExpertComputedValue);
+                    if (err != null)
+                    {
+                        string name = "";
+                        try { name = System.IO.Path.GetFileName(doc.FullFileName); } catch { name = doc.DisplayName; }
+                        errors.Add(System.Tuple.Create(name, err));
+                    }
                 }
-            }
 
-            if (errors.Count > 0)
-            {
-                _stickyDocs = null;
-                StatusMessage = string.Format(LanguageLoader.Get("Msg_WriteErrors"), errors.Count);
-            }
-            else
-            {
-                row.IsExpertPendingApply = false;
-                row.ExpertComputedValue  = null;
-                _catalogBuilder.InvalidateCache();
-                DoRefresh();
-            }
+                if (errors.Count > 0)
+                {
+                    _stickyDocs = null;
+                    StatusMessage = string.Format(LanguageLoader.Get("Msg_WriteErrors"), errors.Count);
+                }
+                else
+                {
+                    row.IsExpertPendingApply = false;
+                    row.ExpertComputedValue  = null;
+                    _catalogBuilder.InvalidateCache();
+                    didWrite = true;
+                }
+            } // batch TryUpdate fires here; dependents propagate before DoRefresh re-reads
+            if (didWrite) DoRefresh();
         }
 
         private string DoFormulaCatalogLookup(string key, string searchCol, string returnCol,
@@ -1751,8 +1672,6 @@ namespace CheckupAddIn.ViewModels
             Rows.Insert(idx + 1, new RowModel());
             EnsureLogicLinkAdjacency();
             UpdateSyncIndicators();
-            EnsureMiterFlangeAdjacency();
-            EnsureHalbzeugPairAdjacency();
             EnforceButtonRules();
             DoRefresh();
         }
@@ -1760,51 +1679,6 @@ namespace CheckupAddIn.ViewModels
         private void RemoveRow(RowModel row)
         {
             if (row == null || Rows.Count <= 1) return;
-
-            if (Rows.Count <= 2 &&
-                (row.FieldKey == FieldCatalogBuilder.FIELD_MITER_GAP ||
-                 row.FieldKey == FieldCatalogBuilder.FIELD_FLANGE_DISTANCE))
-                return;
-
-            if (row.FieldKey == FieldCatalogBuilder.FIELD_MITER_GAP)
-            {
-                var dist = Rows.FirstOrDefault(r => r.FieldKey == FieldCatalogBuilder.FIELD_FLANGE_DISTANCE);
-                if (dist != null) Rows.Remove(dist);
-                Rows.Remove(row);
-                EnsureHalbzeugPairAdjacency();
-                EnforceButtonRules();
-                DoRefresh();
-                return;
-            }
-
-            if (row.FieldKey == FieldCatalogBuilder.FIELD_FLANGE_DISTANCE)
-            {
-                var miterRow = null as RowModel;
-                foreach (var r in Rows) { if (r.FieldKey == FieldCatalogBuilder.FIELD_MITER_GAP) { miterRow = r; break; } }
-                if (miterRow != null) Rows.Remove(miterRow);
-                Rows.Remove(row);
-                EnsureHalbzeugPairAdjacency();
-                EnforceButtonRules();
-                DoRefresh();
-                return;
-            }
-
-            // HalbzeugName removal: also remove HalbzeugIdent
-            if (row.FieldKey == FieldCatalogBuilder.FIELD_HALBZEUG_NAME)
-            {
-                var identRow = Rows.FirstOrDefault(r => r.FieldKey == FieldCatalogBuilder.FIELD_HALBZEUG_IDENT);
-                if (identRow != null) Rows.Remove(identRow);
-                Rows.Remove(row);
-                EnsureMiterFlangeAdjacency();
-                EnforceButtonRules();
-                DoRefresh();
-                return;
-            }
-
-            // HalbzeugIdent cannot be removed while HalbzeugName is present
-            if (row.FieldKey == FieldCatalogBuilder.FIELD_HALBZEUG_IDENT &&
-                Rows.Any(r => r.FieldKey == FieldCatalogBuilder.FIELD_HALBZEUG_NAME))
-                return;
 
             // Linked row removal — remove all rows sharing the same LinkedGroupId.
             if (!string.IsNullOrEmpty(row.LinkedGroupId))
@@ -1823,8 +1697,6 @@ namespace CheckupAddIn.ViewModels
             Rows.Remove(row);
             EnsureLogicLinkAdjacency();
             UpdateSyncIndicators();
-            EnsureMiterFlangeAdjacency();
-            EnsureHalbzeugPairAdjacency();
             EnforceButtonRules();
             DoRefresh();
         }
@@ -1837,97 +1709,8 @@ namespace CheckupAddIn.ViewModels
             Rows.Move(fromIndex, toIndex);
             EnsureLogicLinkAdjacency();
             UpdateSyncIndicators();
-            EnsureMiterFlangeAdjacency();
-            EnsureHalbzeugPairAdjacency();
             EnforceButtonRules();
             DoRefresh();
-        }
-
-        private int IndexOfMiterGap()
-        {
-            for (int i = 0; i < Rows.Count; i++)
-                if (Rows[i].FieldKey == FieldCatalogBuilder.FIELD_MITER_GAP) return i;
-            return -1;
-        }
-
-        private int IndexOfFlangeDistance()
-        {
-            for (int i = 0; i < Rows.Count; i++)
-                if (Rows[i].FieldKey == FieldCatalogBuilder.FIELD_FLANGE_DISTANCE) return i;
-            return -1;
-        }
-
-        private void EnsureMiterFlangeAdjacency()
-        {
-            int mIdx = IndexOfMiterGap();
-            if (mIdx < 0) return;
-
-            int dIdx = IndexOfFlangeDistance();
-            if (dIdx < 0)
-            {
-                var distRow = new RowModel
-                {
-                    FieldKey = FieldCatalogBuilder.FIELD_FLANGE_DISTANCE,
-                    FieldLabel = LanguageLoader.Get("Field_FlangeDistance"),
-                    ValueForeground = Brushes.Red
-                };
-                Rows.Insert(Math.Min(mIdx + 1, Rows.Count), distRow);
-                return;
-            }
-
-            if (dIdx != mIdx + 1)
-            {
-                var distRow = Rows[dIdx];
-                Rows.RemoveAt(dIdx);
-                mIdx = IndexOfMiterGap();
-                Rows.Insert(Math.Min(mIdx + 1, Rows.Count), distRow);
-            }
-        }
-
-        private int IndexOfHalbzeugName()
-        {
-            for (int i = 0; i < Rows.Count; i++)
-                if (Rows[i].FieldKey == FieldCatalogBuilder.FIELD_HALBZEUG_NAME) return i;
-            return -1;
-        }
-
-        private int IndexOfHalbzeugIdent()
-        {
-            for (int i = 0; i < Rows.Count; i++)
-                if (Rows[i].FieldKey == FieldCatalogBuilder.FIELD_HALBZEUG_IDENT) return i;
-            return -1;
-        }
-
-        private void EnsureHalbzeugPairAdjacency()
-        {
-            int n = IndexOfHalbzeugName();
-            if (n < 0)
-            {
-                var orphan = Rows.FirstOrDefault(r => r.FieldKey == FieldCatalogBuilder.FIELD_HALBZEUG_IDENT);
-                if (orphan != null) Rows.Remove(orphan);
-                return;
-            }
-
-            int id = IndexOfHalbzeugIdent();
-            if (id < 0)
-            {
-                var identRow = new RowModel
-                {
-                    FieldKey        = FieldCatalogBuilder.FIELD_HALBZEUG_IDENT,
-                    FieldLabel      = "ROHTEILIDENT",
-                    IsWritableField = true
-                };
-                Rows.Insert(Math.Min(n + 1, Rows.Count), identRow);
-                return;
-            }
-
-            if (id != n + 1)
-            {
-                var identRow = Rows[id];
-                Rows.RemoveAt(id);
-                n = IndexOfHalbzeugName();
-                Rows.Insert(Math.Min(n + 1, Rows.Count), identRow);
-            }
         }
 
         private void OnActiveMultiTokenRowPropertyChanged(object sender, PropertyChangedEventArgs e)
@@ -2037,47 +1820,52 @@ namespace CheckupAddIn.ViewModels
             if (_selectedDocs.Count == 0) { StatusMessage = LanguageLoader.Get("Msg_NoDocForWrite"); return; }
 
             _stickyDocs = new List<Document>(_selectedDocs);
-            var errors = new List<string>();
-            foreach (var doc in _selectedDocs)
+            bool didWrite = false;
+            using (_fieldWriter.BeginBatch())
             {
-                string err = _fieldWriter.WriteFieldValue(doc, group.TargetFieldKey, selectedPriValue);
-                if (err != null)
+                var errors = new List<string>();
+                foreach (var doc in _selectedDocs)
                 {
-                    string name = "";
-                    try { name = System.IO.Path.GetFileName(doc.FullFileName); } catch { name = doc.DisplayName; }
-                    errors.Add(string.Format("  {0}: {1}", name, err));
+                    string err = _fieldWriter.WriteFieldValue(doc, group.TargetFieldKey, selectedPriValue);
+                    if (err != null)
+                    {
+                        string name = "";
+                        try { name = System.IO.Path.GetFileName(doc.FullFileName); } catch { name = doc.DisplayName; }
+                        errors.Add(string.Format("  {0}: {1}", name, err));
+                    }
                 }
-            }
 
-            if (errors.Count > 0)
-            {
-                _stickyDocs = null;
-                string details = string.Join("\n", errors);
-                MessageBox.Show(
-                    string.Format("Write failed for {0} document(s):\n\n{1}", errors.Count, details),
-                    "Checkup 2024 – Write Error", MessageBoxButton.OK, MessageBoxImage.Warning);
-                StatusMessage = string.Format(LanguageLoader.Get("Msg_WriteErrors"), errors.Count);
-                return;
-            }
+                if (errors.Count > 0)
+                {
+                    _stickyDocs = null;
+                    string details = string.Join("\n", errors);
+                    MessageBox.Show(
+                        string.Format("Write failed for {0} document(s):\n\n{1}", errors.Count, details),
+                        "Checkup 2024 – Write Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    StatusMessage = string.Format(LanguageLoader.Get("Msg_WriteErrors"), errors.Count);
+                    return; // batch flushes any partial successes on scope exit
+                }
 
-            if (catalog != null)
-            {
-                foreach (var syncPair in CardEngine.GetSyncWrites(group, catalog, selectedPriValue))
-                    foreach (var doc in _selectedDocs)
-                        _fieldWriter.WriteFieldValue(doc, syncPair.FieldKey, syncPair.Value);
-            }
+                if (catalog != null)
+                {
+                    foreach (var syncPair in CardEngine.GetSyncWrites(group, catalog, selectedPriValue))
+                        foreach (var doc in _selectedDocs)
+                            _fieldWriter.WriteFieldValue(doc, syncPair.FieldKey, syncPair.Value);
+                }
 
-            if (CardEngine.HasBasicLogicCards(group))
-            {
-                var fCtx = BuildFormulaContext(group, catalog, selectedPriValue);
-                foreach (var pair in CardEngine.EvaluateBasicLogicCards(group, fCtx, group.TargetFieldKey))
-                    foreach (var doc in _selectedDocs)
-                        _fieldWriter.WriteFieldValue(doc, pair.FieldKey, pair.Value);
-            }
+                if (CardEngine.HasBasicLogicCards(group))
+                {
+                    var fCtx = BuildFormulaContext(group, catalog, selectedPriValue);
+                    foreach (var pair in CardEngine.EvaluateBasicLogicCards(group, fCtx, group.TargetFieldKey))
+                        foreach (var doc in _selectedDocs)
+                            _fieldWriter.WriteFieldValue(doc, pair.FieldKey, pair.Value);
+                }
 
-            row.IsInlineEditing = false;
-            _catalogBuilder.InvalidateCache();
-            DoRefresh();
+                row.IsInlineEditing = false;
+                _catalogBuilder.InvalidateCache();
+                didWrite = true;
+            } // batch TryUpdate fires here; dependents propagate before DoRefresh re-reads
+            if (didWrite) DoRefresh();
         }
 
         public void ApplyMultiPickResult(RowModel row, IReadOnlyList<string> selectedPriValues)
@@ -2101,68 +1889,57 @@ namespace CheckupAddIn.ViewModels
             if (_selectedDocs.Count == 0) { StatusMessage = LanguageLoader.Get("Msg_NoDocForWrite"); return; }
 
             _stickyDocs = new List<Document>(_selectedDocs);
-            var errors = new List<string>();
-            foreach (var doc in _selectedDocs)
+            bool didWrite = false;
+            using (_fieldWriter.BeginBatch())
             {
-                string err = _fieldWriter.WriteFieldValue(doc, group.TargetFieldKey, priValue);
-                if (err != null)
-                {
-                    string name = "";
-                    try { name = System.IO.Path.GetFileName(doc.FullFileName); } catch { name = doc.DisplayName; }
-                    errors.Add(string.Format("  {0}: {1}", name, err));
-                }
-            }
-
-            if (errors.Count > 0)
-            {
-                _stickyDocs = null;
-                string details = string.Join("\n", errors);
-                MessageBox.Show(
-                    string.Format("Write failed for {0} document(s):\n\n{1}", errors.Count, details),
-                    "Checkup 2024 – Write Error", MessageBoxButton.OK, MessageBoxImage.Warning);
-                StatusMessage = string.Format(LanguageLoader.Get("Msg_WriteErrors"), errors.Count);
-                return;
-            }
-
-            if (!string.IsNullOrEmpty(mpCfg.CompanionFieldKey) && catalog != null)
-            {
-                string companionValue = CardEngine.BuildMultiPickCompanionValue(
-                    selectedPriValues, catalog, mpCfg.CompanionRole, mpCfg.CompanionSep);
+                var errors = new List<string>();
                 foreach (var doc in _selectedDocs)
-                    _fieldWriter.WriteFieldValue(doc, mpCfg.CompanionFieldKey, companionValue);
-            }
+                {
+                    string err = _fieldWriter.WriteFieldValue(doc, group.TargetFieldKey, priValue);
+                    if (err != null)
+                    {
+                        string name = "";
+                        try { name = System.IO.Path.GetFileName(doc.FullFileName); } catch { name = doc.DisplayName; }
+                        errors.Add(string.Format("  {0}: {1}", name, err));
+                    }
+                }
 
-            row.IsInlineEditing = false;
-            _catalogBuilder.InvalidateCache();
-            DoRefresh();
+                if (errors.Count > 0)
+                {
+                    _stickyDocs = null;
+                    string details = string.Join("\n", errors);
+                    MessageBox.Show(
+                        string.Format("Write failed for {0} document(s):\n\n{1}", errors.Count, details),
+                        "Checkup 2024 – Write Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    StatusMessage = string.Format(LanguageLoader.Get("Msg_WriteErrors"), errors.Count);
+                    return; // batch flushes any partial successes on scope exit
+                }
+
+                if (!string.IsNullOrEmpty(mpCfg.CompanionFieldKey) && catalog != null)
+                {
+                    string companionValue = CardEngine.BuildMultiPickCompanionValue(
+                        selectedPriValues, catalog, mpCfg.CompanionRole, mpCfg.CompanionSep);
+                    foreach (var doc in _selectedDocs)
+                        _fieldWriter.WriteFieldValue(doc, mpCfg.CompanionFieldKey, companionValue);
+                }
+
+                row.IsInlineEditing = false;
+                _catalogBuilder.InvalidateCache();
+                didWrite = true;
+            } // batch TryUpdate fires here; dependents propagate before DoRefresh re-reads
+            if (didWrite) DoRefresh();
         }
 
         /// <summary>
         /// Keeps row-level UI constraints consistent after any row add/remove/reorder operation.
-        /// Called after every mutation. Rules:
-        ///   - CanRemove=false when only 1 row would remain.
-        ///   - MiterGap and FlangeDistance cannot be removed when only 2 rows remain (they form a pair).
-        ///   - FlangeDistance CanRemove is locked whenever MiterGap is present.
+        /// Called after every mutation. Rule: CanRemove=false when only 1 row would remain.
         /// </summary>
-        private void EnforceButtonRules()
+        internal void EnforceButtonRules()
         {
-            int n          = Rows.Count;
-            bool hasMiter  = IndexOfMiterGap()     >= 0;
-            bool hasHalbzeug = IndexOfHalbzeugName() >= 0;
+            int n = Rows.Count;
 
             for (int i = 0; i < n; i++)
-            {
-                var row = Rows[i];
-                row.CanRemove = n > 1;
-                if (n <= 2 &&
-                    (row.FieldKey == FieldCatalogBuilder.FIELD_MITER_GAP ||
-                     row.FieldKey == FieldCatalogBuilder.FIELD_FLANGE_DISTANCE))
-                    row.CanRemove = false;
-                if (hasMiter    && row.FieldKey == FieldCatalogBuilder.FIELD_FLANGE_DISTANCE)
-                    row.CanRemove = false;
-                if (hasHalbzeug && row.FieldKey == FieldCatalogBuilder.FIELD_HALBZEUG_IDENT)
-                    row.CanRemove = false;
-            }
+                Rows[i].CanRemove = n > 1;
 
             RelayCommand.RaiseCanExecuteChanged();
         }
@@ -2181,34 +1958,13 @@ namespace CheckupAddIn.ViewModels
             row.FieldLabel      = row.SelectedField.RowLabel;
             row.IsWritableField = row.SelectedField.IsWritable;
             row.AllowedValues   = row.SelectedField.AllowedValues;
-            row.IsMiterGapRow   = row.FieldKey == FieldCatalogBuilder.FIELD_MITER_GAP;
             row.IsEditable      = false;
             row.IsInlineEditing = false;
 
-            row.ValueForeground = row.FieldKey == FieldCatalogBuilder.FIELD_FLANGE_DISTANCE
-                ? Brushes.Red : Brushes.Black;
-
-            // Pseudo-key: convert to real HalbzeugName and add HalbzeugIdent row below
-            if (row.FieldKey == FieldCatalogBuilder.FIELD_HALBZEUG)
-            {
-                row.FieldKey        = FieldCatalogBuilder.FIELD_HALBZEUG_NAME;
-                row.FieldLabel      = "ROHTEILNAME";
-                row.IsWritableField = true;
-                row.AllowedValues   = null;
-                row.IsMiterGapRow   = false;
-                row.ValueForeground = Brushes.Black;
-                row.SelectedField   = null;
-                EnsureHalbzeugPairAdjacency();
-                EnsureMiterFlangeAdjacency();
-                EnforceButtonRules();
-                DoRefresh();
-                return;
-            }
+            row.ValueForeground = Brushes.Black;
 
             EnsureLogicLinkAdjacency();
             UpdateSyncIndicators();
-            EnsureMiterFlangeAdjacency();
-            EnsureHalbzeugPairAdjacency();
             EnforceButtonRules();
             DoRefresh();
         }
@@ -2292,32 +2048,37 @@ namespace CheckupAddIn.ViewModels
 
             _stickyDocs = new List<Document>(_selectedDocs);
 
-            var errors = new List<string>();
-            foreach (var doc in _selectedDocs)
+            bool didWrite = false;
+            using (_fieldWriter.BeginBatch())
             {
-                string err = _fieldWriter.WriteFieldValue(doc, targetKey, equation);
-                if (err != null)
+                var errors = new List<string>();
+                foreach (var doc in _selectedDocs)
                 {
-                    string name;
-                    try { name = System.IO.Path.GetFileName(doc.FullFileName); } catch { name = doc.DisplayName; }
-                    errors.Add(name + ": " + err);
+                    string err = _fieldWriter.WriteFieldValue(doc, targetKey, equation);
+                    if (err != null)
+                    {
+                        string name;
+                        try { name = System.IO.Path.GetFileName(doc.FullFileName); } catch { name = doc.DisplayName; }
+                        errors.Add(name + ": " + err);
+                    }
                 }
-            }
 
-            DiagLogger.Log("fx", "apply formula edit row='" + DiagLogger.S(row.FieldKey) + "' target='" + DiagLogger.S(targetKey) + "' eq='" + DiagLogger.S(equation) + "' errors=" + errors.Count);
+                DiagLogger.Log("fx", "apply formula edit row='" + DiagLogger.S(row.FieldKey) + "' target='" + DiagLogger.S(targetKey) + "' eq='" + DiagLogger.S(equation) + "' errors=" + errors.Count);
 
-            if (errors.Count > 0)
-            {
-                // Decision B: Inventor rejected the equation → stay in edit, paint it red, show why.
-                row.IsFormulaInvalid = true;
-                StatusMessage = string.Join(" | ", errors);
-                return;
-            }
+                if (errors.Count > 0)
+                {
+                    // Decision B: Inventor rejected the equation → stay in edit, paint it red, show why.
+                    row.IsFormulaInvalid = true;
+                    StatusMessage = string.Join(" | ", errors);
+                    return; // batch flushes any partial successes on scope exit
+                }
 
-            row.IsInlineEditing = false; // also clears IsFormulaEditing / IsFormulaInvalid
-            _catalogBuilder.InvalidateCache();
-            EnforceButtonRules();
-            DoRefresh();
+                row.IsInlineEditing = false; // also clears IsFormulaEditing / IsFormulaInvalid
+                _catalogBuilder.InvalidateCache();
+                EnforceButtonRules();
+                didWrite = true;
+            } // batch TryUpdate fires here; dependents propagate before DoRefresh re-reads
+            if (didWrite) DoRefresh();
         }
 
         // ══════════════════════════════════════════════
@@ -2327,12 +2088,6 @@ namespace CheckupAddIn.ViewModels
         private void ApplyFieldEdit(RowModel row)
         {
             if (row == null) return;
-
-            if (row.IsMiterGapRow)
-            {
-                ApplyMiterGap(row);
-                return;
-            }
 
             // fx formula write — write the raw equation to the terminal real field, bypassing the
             // logic-card transforms (PrefixSuffix/Sort/BasicLogic) that decorate a normal logic Apply.
@@ -2376,14 +2131,17 @@ namespace CheckupAddIn.ViewModels
 
                 if (CardEngine.HasBasicLogicCards(logicGroup))
                 {
-                    var fCtx = BuildFormulaContext(logicGroup, null, "",
-                        inputValue: newValue, interceptFieldKey: logicGroup.TargetFieldKey);
-                    foreach (var pair in CardEngine.EvaluateBasicLogicCards(logicGroup, fCtx, logicGroup.TargetFieldKey))
-                        foreach (var doc in _selectedDocs)
-                            _fieldWriter.WriteFieldValue(doc, pair.FieldKey, pair.Value);
-                    _stickyDocs = new List<Document>(_selectedDocs);
-                    row.IsInlineEditing = false;
-                    _catalogBuilder.InvalidateCache();
+                    using (_fieldWriter.BeginBatch())
+                    {
+                        var fCtx = BuildFormulaContext(logicGroup, null, "",
+                            inputValue: newValue, interceptFieldKey: logicGroup.TargetFieldKey);
+                        foreach (var pair in CardEngine.EvaluateBasicLogicCards(logicGroup, fCtx, logicGroup.TargetFieldKey))
+                            foreach (var doc in _selectedDocs)
+                                _fieldWriter.WriteFieldValue(doc, pair.FieldKey, pair.Value);
+                        _stickyDocs = new List<Document>(_selectedDocs);
+                        row.IsInlineEditing = false;
+                        _catalogBuilder.InvalidateCache();
+                    } // batch TryUpdate fires here
                     DoRefresh();
                     return;
                 }
@@ -2410,152 +2168,70 @@ namespace CheckupAddIn.ViewModels
             // is empty after the write completes.
             _stickyDocs = new List<Document>(_selectedDocs);
 
-            var errors = new List<string>();
-            foreach (var doc in _selectedDocs)
+            bool didWrite = false;
+            using (_fieldWriter.BeginBatch())
             {
-                string err = _fieldWriter.WriteFieldValue(doc, writeFieldKey, newValue);
-                if (err != null)
+                var errors = new List<string>();
+                foreach (var doc in _selectedDocs)
                 {
-                    string name = "";
-                    try { name = System.IO.Path.GetFileName(doc.FullFileName); }
-                    catch { name = doc.DisplayName; }
-                    errors.Add(string.Format("  {0}: {1}", name, err));
-                }
-            }
-
-            if (errors.Count > 0)
-            {
-                _stickyDocs = null;
-
-                // Parameter equations are user-editable expressions — an invalid one is expected
-                // input, not an exceptional failure. Mirror the fx path: keep the row in edit, paint
-                // it red, status line only — no modal. (Other field kinds keep the explicit dialog.)
-                if (writeFieldKey.StartsWith("PARAM:", StringComparison.Ordinal))
-                {
-                    row.IsFormulaInvalid = true;
-                    StatusMessage = string.Join(" | ", errors);
-                    return; // stay in edit so the user can fix the equation
-                }
-
-                string details = string.Join("\n", errors);
-                MessageBox.Show(
-                    string.Format("Write failed for {0} document(s):\n\n{1}", errors.Count, details),
-                    "Checkup 2024 – Write Error", MessageBoxButton.OK, MessageBoxImage.Warning);
-                StatusMessage = string.Format(LanguageLoader.Get("Msg_WriteErrors"), errors.Count);
-            }
-            else
-            {
-                // Sync card + PairTransform writes for Logic Set rows
-                if (logicGroup != null && logicCatalog != null)
-                {
-                    foreach (var syncPair in CardEngine.GetSyncWrites(logicGroup, logicCatalog, newValue))
-                        foreach (var doc in _selectedDocs)
-                            _fieldWriter.WriteFieldValue(doc, syncPair.FieldKey, syncPair.Value);
-
-                    if (CardEngine.HasPairTransformCard(logicGroup))
+                    string err = _fieldWriter.WriteFieldValue(doc, writeFieldKey, newValue);
+                    if (err != null)
                     {
-                        var ptCfg = CardEngine.GetPairTransformConfig(logicGroup);
-                        if (!string.IsNullOrEmpty(ptCfg.CompanionFieldKey))
-                        {
-                            string transformed = CardEngine.BuildPairTransformValue(
-                                newValue, logicCatalog, ptCfg.SourceSep, ptCfg.LookupRole, ptCfg.OutputRole, ptCfg.OutputSep);
+                        string name = "";
+                        try { name = System.IO.Path.GetFileName(doc.FullFileName); }
+                        catch { name = doc.DisplayName; }
+                        errors.Add(string.Format("  {0}: {1}", name, err));
+                    }
+                }
+
+                if (errors.Count > 0)
+                {
+                    _stickyDocs = null;
+
+                    // Parameter equations are user-editable expressions — an invalid one is expected
+                    // input, not an exceptional failure. Mirror the fx path: keep the row in edit, paint
+                    // it red, status line only — no modal. (Other field kinds keep the explicit dialog.)
+                    if (writeFieldKey.StartsWith("PARAM:", StringComparison.Ordinal))
+                    {
+                        row.IsFormulaInvalid = true;
+                        StatusMessage = string.Join(" | ", errors);
+                        return; // stay in edit; batch flushes any partial successes on scope exit
+                    }
+
+                    string details = string.Join("\n", errors);
+                    MessageBox.Show(
+                        string.Format("Write failed for {0} document(s):\n\n{1}", errors.Count, details),
+                        "Checkup 2024 – Write Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    StatusMessage = string.Format(LanguageLoader.Get("Msg_WriteErrors"), errors.Count);
+                }
+                else
+                {
+                    // Sync card + PairTransform writes for Logic Set rows
+                    if (logicGroup != null && logicCatalog != null)
+                    {
+                        foreach (var syncPair in CardEngine.GetSyncWrites(logicGroup, logicCatalog, newValue))
                             foreach (var doc in _selectedDocs)
-                                _fieldWriter.WriteFieldValue(doc, ptCfg.CompanionFieldKey, transformed);
+                                _fieldWriter.WriteFieldValue(doc, syncPair.FieldKey, syncPair.Value);
+
+                        if (CardEngine.HasPairTransformCard(logicGroup))
+                        {
+                            var ptCfg = CardEngine.GetPairTransformConfig(logicGroup);
+                            if (!string.IsNullOrEmpty(ptCfg.CompanionFieldKey))
+                            {
+                                string transformed = CardEngine.BuildPairTransformValue(
+                                    newValue, logicCatalog, ptCfg.SourceSep, ptCfg.LookupRole, ptCfg.OutputRole, ptCfg.OutputSep);
+                                foreach (var doc in _selectedDocs)
+                                    _fieldWriter.WriteFieldValue(doc, ptCfg.CompanionFieldKey, transformed);
+                            }
                         }
                     }
+
+                    row.IsInlineEditing = false;
+                    _catalogBuilder.InvalidateCache();
+                    didWrite = true;
                 }
-
-                row.IsInlineEditing = false;
-                _catalogBuilder.InvalidateCache();
-                DoRefresh();
-            }
-        }
-
-        private void ApplyMiterGap(RowModel row)
-        {
-            if (row == null) return;
-
-            string exprIn = row.EditText?.Trim() ?? "";
-            if (exprIn == "") return;
-
-            var smParts = _selectedDocs
-                .OfType<PartDocument>()
-                .Where(p => p.ComponentDefinition is SheetMetalComponentDefinition)
-                .ToList();
-
-            if (smParts.Count == 0)
-            {
-                MessageBox.Show("No Sheet Metal parts in selection.", "Checkup",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            // Snapshot the current selection before writing; part.Update() triggers Inventor
-            // events that may clear the IAM SelectSet before we call DoRefresh.
-            _stickyDocs = new List<Document>(_selectedDocs);
-
-            var errors  = new List<string>();
-            int success = 0;
-
-            foreach (var part in smParts)
-            {
-                string partName = "";
-                try { partName = System.IO.Path.GetFileName(part.FullFileName); }
-                catch { partName = part.DisplayName; }
-
-                var flange2 = _smReader.FindSecondFlange(part);
-                if (flange2 == null) { errors.Add($"{partName}: No 2nd flange found."); continue; }
-
-                double currentCm;
-                try { currentCm = _smReader.ReadMiterGapCm(flange2.Definition); }
-                catch (Exception ex) { errors.Add($"{partName}: Miter gap read failed: {ex.Message}"); continue; }
-
-                ModelParameter miterParam = null;
-                foreach (ModelParameter p in part.ComponentDefinition.Parameters.ModelParameters)
-                {
-                    if (Math.Abs((double)p.Value - currentCm) < 0.0000001)
-                    {
-                        miterParam = p;
-                        break;
-                    }
-                }
-
-                if (miterParam == null)
-                {
-                    errors.Add($"{partName}: Could not identify Miter Gap parameter by value match.");
-                    continue;
-                }
-
-                // If the user typed a plain number append the document's length unit ("1.5 mm").
-                // If they typed an expression ("d25" or "1.5 mm") pass it through unchanged.
-                string finalExpr = exprIn;
-                string normalized = exprIn.Replace(",", ".").Trim();
-                if (double.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out double numVal))
-                {
-                    string unit = SheetMetalReader.UnitAbbreviation(part.UnitsOfMeasure.LengthUnits);
-                    finalExpr = numVal.ToString("0.######", CultureInfo.InvariantCulture) + " " + unit;
-                }
-
-                try
-                {
-                    miterParam.Expression = finalExpr;
-                    part.Update();
-                    success++;
-                }
-                catch (Exception ex) { errors.Add($"{partName}: Could not set Miter Gap: {ex.Message}"); }
-            }
-
-            if (errors.Count > 0)
-            {
-                if (success == 0) _stickyDocs = null; // all writes failed — release sticky
-                MessageBox.Show(
-                    $"Miter Gap set on {success} part(s).\nErrors ({errors.Count}):\n\n" +
-                    string.Join("\n", errors),
-                    "Checkup 2024", MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
-
-            row.IsInlineEditing = false;
-            DoRefresh();
+            } // batch TryUpdate fires here; dependents propagate before DoRefresh re-reads
+            if (didWrite) DoRefresh();
         }
 
         // ══════════════════════════════════════════════

@@ -13,10 +13,6 @@ namespace CheckupAddIn.Services
     /// </summary>
     /// <remarks>
     /// Field key format — must match FieldWriter.WriteFieldValue and FieldItem.Key conventions:
-    ///   SPECIAL:MiterGap / SPECIAL:FlangeDistance        — sheet metal computed values (read via SheetMetalReader)
-    ///   SPECIAL:Spezi1 / SPECIAL:Spezi2                  — Spezi Baukasten rows; map to UDEF SPEZIFIK1/2 internally
-    ///   SPECIAL:Halbzeug                                  — pseudo-key; expands to HalbzeugName + HalbzeugIdent pair
-    ///   SPECIAL:HalbzeugName / SPECIAL:HalbzeugIdent      — raw material rows; map to UDEF ROHTEILNAME/ROHTEILIDENT
     ///   DOC:&lt;tag&gt;                                        — PartDocument properties (Material, Appearance, units…)
     ///   IPROP|&lt;setName&gt;|&lt;propName&gt;                        — standard PropertySet (set looked up by exact COM name)
     ///   UDEF:&lt;propName&gt;                                  — user-defined iProperties (any language variant of the set name)
@@ -32,11 +28,6 @@ namespace CheckupAddIn.Services
         private string _cachedDocPath = "";
         private List<FieldItem> _cachedCatalog;
 
-        public const string FIELD_MITER_GAP       = "SPECIAL:MiterGap";
-        public const string FIELD_FLANGE_DISTANCE  = "SPECIAL:FlangeDistance";
-        public const string FIELD_HALBZEUG         = "SPECIAL:Halbzeug";
-        public const string FIELD_HALBZEUG_NAME    = "SPECIAL:HalbzeugName";
-        public const string FIELD_HALBZEUG_IDENT   = "SPECIAL:HalbzeugIdent";
         public const string CycleSentinel          = "#CYCLE";
 
         // Group constants are language keys — GroupNameConverter translates them for display.
@@ -469,12 +460,6 @@ namespace CheckupAddIn.Services
         private string ResolveFieldValueWithCycleGuard(string fieldKey, Document doc, HashSet<string> visitedLogicGroups)
         {
             if (string.IsNullOrWhiteSpace(fieldKey)) return "";
-            if (fieldKey == FIELD_MITER_GAP || fieldKey == FIELD_FLANGE_DISTANCE) return "";
-            if (fieldKey == FIELD_HALBZEUG) return "";
-            if (fieldKey == FIELD_HALBZEUG_NAME)
-                return _propReader.ReadUserDefinedProperty(doc, "ROHTEILNAME");
-            if (fieldKey == FIELD_HALBZEUG_IDENT)
-                return _propReader.ReadUserDefinedProperty(doc, "ROHTEILIDENT");
 
             // CYCLE GUARD (V1 safeguard): a Group whose TargetFieldKey points to its own SPECIAL:LOGIC:
             // alias (or any chain A→B→…→A) would otherwise recurse infinitely → stack overflow → Inventor crash.

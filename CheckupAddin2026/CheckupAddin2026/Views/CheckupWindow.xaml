@@ -1015,20 +1015,6 @@
                                         </Popup>
                                     </Grid>
 
-                                    <!-- Sub-col 0+1: Halbzeug inline editor (editable ComboBox with catalog suggestions) -->
-                                    <ComboBox Grid.Column="0" Grid.ColumnSpan="2"
-                                              Style="{StaticResource ValueCombo}"
-                                              IsEditable="True"
-                                              ItemsSource="{Binding AllowedValues}"
-                                              Text="{Binding EditText, UpdateSourceTrigger=PropertyChanged}"
-                                              VerticalAlignment="Stretch"
-                                              Margin="4,1,8,1"
-                                              MouseRightButtonUp="Value_RightClick"
-                                              PreviewKeyDown="ValueCombo_PreviewKeyDown"
-                                              LostFocus="EditControl_LostFocus"
-                                              IsVisibleChanged="EditControl_IsVisibleChanged"
-                                              Visibility="{Binding IsHalbzeugTextEditMode, Converter={StaticResource BoolToVis}}"/>
-
                                     <!-- Sub-col 0+1: Value-picker with live filter (AllowedValues fields) -->
                                     <Grid x:Name="AllowedValuesPanel"
                                           Grid.Column="0" Grid.ColumnSpan="2"
