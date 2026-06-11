@@ -616,5 +616,29 @@ namespace CheckupAddIn.Services
             catch { }
             return false;
         }
+
+        public static void SaveFileNameViewMode(int mode)
+        {
+            try
+            {
+                using (var key = Registry.CurrentUser.CreateSubKey(RegKey))
+                    key?.SetValue("FileNameViewMode", mode, RegistryValueKind.DWord);
+            }
+            catch { }
+        }
+
+        public static int LoadFileNameViewMode()
+        {
+            try
+            {
+                using (var key = Registry.CurrentUser.OpenSubKey(RegKey))
+                {
+                    var val = key?.GetValue("FileNameViewMode");
+                    if (val is int i && i >= 0 && i <= 2) return i;
+                }
+            }
+            catch { }
+            return 0;
+        }
     }
 }

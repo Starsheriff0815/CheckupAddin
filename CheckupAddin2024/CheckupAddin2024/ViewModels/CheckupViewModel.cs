@@ -79,6 +79,12 @@ namespace CheckupAddIn.ViewModels
         private List<Document>           _stickyDocs = null;
         // Documents resolved on each refresh; used by ApplyFieldEdit for batch writes.
         private List<Document>           _selectedDocs = new List<Document>();
+        // Instance counts per FullFileName from the last SelectSet read (only entries > 1 stored).
+        private Dictionary<string, int>  _instanceCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        // Sub-assembly grouping: parentIamFilename → (partFilename → count).  Empty key = top-level.
+        private Dictionary<string, Dictionary<string, int>> _subAsmGroups = new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
+        // 0=Plain, 1=Compact, 2=Detailed — persisted via UiStateStore.
+        private int                      _fileNameViewMode = 0;
         private const int MAX_ROWS = 30;
         // Tracks which multi-token Logic row is currently in edit mode (for per-token autocomplete).
         private RowModel _activeMultiTokenEditRow;
@@ -105,6 +111,22 @@ namespace CheckupAddIn.ViewModels
             get => _fileName;
             set { _fileName = value ?? ""; OnPropertyChanged(); }
         }
+
+        // View-mode cycle button label, fully managed by the language catalog (letter + symbol).
+        // Each click advances the mode, which refreshes this label.
+        public string FileNameViewModeLabel
+        {
+            get
+            {
+                string key = _fileNameViewMode == 1 ? "Lbl_ViewMode_Compact"
+                           : _fileNameViewMode == 2 ? "Lbl_ViewMode_Detailed"
+                           : "Lbl_ViewMode_Plain";
+                return LanguageLoader.Get(key);
+            }
+        }
+
+        // 12px font ≈ 16px line height; 2 lines ≈ 36, 5 lines ≈ 84 (incl. ascender/descender slack).
+        public double FileNameMaxHeight => _fileNameViewMode == 2 ? 84 : 36;
 
         private string _statusMessage = "Ready.";
         public string StatusMessage
@@ -210,9 +232,10 @@ namespace CheckupAddIn.ViewModels
         public RelayCommand FieldSelectionChangedCommand { get; }
         public RelayCommand OpenCatalogPickerCommand     { get; }
         public RelayCommand ApplyExpertValueCommand      { get; }
-        public RelayCommand ToggleFormulaEditCommand     { get; }
-        public RelayCommand ToggleFieldPinCommand        { get; private set; }
-        public RelayCommand ClearFieldSelPrefsCommand    { get; private set; }
+        public RelayCommand ToggleFormulaEditCommand       { get; }
+        public RelayCommand CycleFileNameViewModeCommand   { get; }
+        public RelayCommand ToggleFieldPinCommand          { get; private set; }
+        public RelayCommand ClearFieldSelPrefsCommand      { get; private set; }
 
         // ── V1 Expert Mode ──
         private static readonly System.Windows.Media.SolidColorBrush _expertAmberBrush = MakeAmberBrush();
@@ -453,6 +476,11 @@ namespace CheckupAddIn.ViewModels
             OpenCatalogPickerCommand = new RelayCommand(p => { var h = RequestOpenCatalogPicker; if (h != null) h(p as RowModel); });
             ApplyExpertValueCommand  = new RelayCommand(p => { if (p is RowModel r) ApplyExpertValue(r); });
             ToggleFormulaEditCommand = new RelayCommand(p => { if (p is RowModel r) ToggleFormulaEdit(r); });
+
+            CycleFileNameViewModeCommand = new RelayCommand(_ =>
+                ApplyFileNameViewMode(_fileNameViewMode + 1));
+
+            _fileNameViewMode = UiStateStore.LoadFileNameViewMode();
 
             string pinnedRaw = UiStateStore.LoadFieldSelPinnedFields();
             if (!string.IsNullOrEmpty(pinnedRaw))
@@ -860,7 +888,8 @@ namespace CheckupAddIn.ViewModels
             {
                 _docEvents = ((dynamic)doc).DocumentEvents as DocumentEvents;
                 if (_docEvents != null)
-                    _docEvents.OnChange += OnInventorDocumentChanged;
+                    _docEvents.OnChange          += OnInventorDocumentChanged;
+                    _docEvents.OnChangeSelectSet += OnDocumentSelectSetChanged;
             }
             catch { }
         }
@@ -871,7 +900,8 @@ namespace CheckupAddIn.ViewModels
             {
                 if (_docEvents != null)
                 {
-                    _docEvents.OnChange -= OnInventorDocumentChanged;
+                    _docEvents.OnChange          -= OnInventorDocumentChanged;
+                    _docEvents.OnChangeSelectSet -= OnDocumentSelectSetChanged;
                     _docEvents = null;
                 }
             }
@@ -890,6 +920,22 @@ namespace CheckupAddIn.ViewModels
                     ResetFallbackTimer();
                     if (!Rows.Any(r => r.IsInlineEditing))
                         DoRefresh();
+                }
+                catch { }
+            }));
+        }
+
+        private void OnDocumentSelectSetChanged(EventTimingEnum before, NameValueMap context,
+                                               out HandlingCodeEnum handlingCode)
+        {
+            handlingCode = HandlingCodeEnum.kEventNotHandled;
+            if (before != EventTimingEnum.kAfter) return;
+            System.Windows.Application.Current?.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    ResetFallbackTimer();
+                    if (_selectDebounce != null) { _selectDebounce.Stop(); _selectDebounce.Start(); }
                 }
                 catch { }
             }));
@@ -945,9 +991,108 @@ namespace CheckupAddIn.ViewModels
             DoRefresh();
         }
 
+        // ── FILENAME VIEW MODES ──
+
+        // Sets the filename view mode (wrapped to 0..2), persists it, rebuilds the filename
+        // string, and notifies the S/C/D highlight + height-cap bindings.
+        private void ApplyFileNameViewMode(int mode)
+        {
+            _fileNameViewMode = ((mode % 3) + 3) % 3;
+            UiStateStore.SaveFileNameViewMode(_fileNameViewMode);
+            FileName = BuildFileName();
+            OnPropertyChanged(nameof(FileNameViewModeLabel));
+            OnPropertyChanged(nameof(FileNameMaxHeight));
+        }
+
+        // Name of the top-level object (the active assembly) — used as the group label for
+        // components placed directly in the top assembly instead of a literal "(Top Level)".
+        private string GetTopLevelName()
+        {
+            try
+            {
+                string path = _app.ActiveDocument.FullFileName;
+                string name = System.IO.Path.GetFileName(path);
+                if (!string.IsNullOrEmpty(name)) return name;
+            }
+            catch { }
+            try
+            {
+                string dn = _app.ActiveDocument.DisplayName;
+                if (!string.IsNullOrEmpty(dn)) return dn;
+            }
+            catch { }
+            return "(Top Level)";
+        }
+
+        private string BuildFileName()
+        {
+            if (_selectedDocs == null || _selectedDocs.Count == 0) return "";
+            if (_fileNameViewMode == 1) return BuildFileNameCompact();
+            if (_fileNameViewMode == 2) return BuildFileNameDetailed();
+            return BuildFileNamePlain();
+        }
+
+        private string BuildFileNamePlain()
+        {
+            var parts = new System.Collections.Generic.List<string>();
+            foreach (Document d in _selectedDocs)
+            {
+                string key = "", name = "";
+                try { key = d.FullFileName; name = System.IO.Path.GetFileName(key); }
+                catch { name = d.DisplayName; key = name; }
+                int cnt;
+                parts.Add(_instanceCounts.TryGetValue(key, out cnt) ? name + " (" + cnt + ")" : name);
+            }
+            return string.Join(", ", parts);
+        }
+
+        private string BuildFileNameCompact()
+        {
+            var parts = new System.Collections.Generic.List<string>();
+            foreach (Document d in _selectedDocs)
+            {
+                string key = "", name = "";
+                try { key = d.FullFileName; name = System.IO.Path.GetFileName(key); }
+                catch { name = d.DisplayName; key = name; }
+                int cnt;
+                if (!_instanceCounts.TryGetValue(key, out cnt)) { parts.Add(name); continue; }
+                int iamCount = 0;
+                foreach (var g in _subAsmGroups.Values)
+                    if (g.ContainsKey(name)) iamCount++;
+                parts.Add(iamCount > 1
+                    ? name + " (" + cnt + ", " + iamCount + " IAM)"
+                    : name + " (" + cnt + ")");
+            }
+            return string.Join(", ", parts);
+        }
+
+        private string BuildFileNameDetailed()
+        {
+            if (_subAsmGroups == null || _subAsmGroups.Count == 0)
+                return BuildFileNamePlain();
+
+            var lines = new System.Collections.Generic.List<string>();
+            var keys = new System.Collections.Generic.List<string>(_subAsmGroups.Keys);
+            keys.Sort(StringComparer.OrdinalIgnoreCase);
+            foreach (string subAsmKey in keys)
+            {
+                string label = string.IsNullOrEmpty(subAsmKey) ? GetTopLevelName() : subAsmKey;
+                var innerParts = new System.Collections.Generic.List<string>();
+                var innerKeys = new System.Collections.Generic.List<string>(_subAsmGroups[subAsmKey].Keys);
+                innerKeys.Sort(StringComparer.OrdinalIgnoreCase);
+                foreach (string partName in innerKeys)
+                {
+                    int partCount = _subAsmGroups[subAsmKey][partName];
+                    innerParts.Add(partCount > 1 ? partName + " (" + partCount + ")" : partName);
+                }
+                lines.Add(label + " > " + string.Join(", ", innerParts));
+            }
+            return string.Join("\n", lines);
+        }
+
         private void DoRefreshCore()
         {
-            _selectedDocs = _docResolver.GetAllSelectedDocuments(out bool isMulti, out bool isAssemblyFallback);
+            _selectedDocs = _docResolver.GetAllSelectedDocuments(out bool isMulti, out bool isAssemblyFallback, out _instanceCounts, out _subAsmGroups);
             IsMultiSelection = isMulti;
 
             // When Inventor clears the IAM SelectSet after a document update, DocumentResolver
@@ -977,11 +1122,7 @@ namespace CheckupAddIn.ViewModels
 
             var primaryDoc = _selectedDocs[0];
 
-            FileName = string.Join(" / ", _selectedDocs.Select(d =>
-            {
-                try { return System.IO.Path.GetFileName(d.FullFileName); }
-                catch { return d.DisplayName; }
-            }));
+            FileName = BuildFileName();
 
             FieldCatalog = _catalogBuilder.GetCatalog(primaryDoc);
 
@@ -2393,6 +2534,7 @@ namespace CheckupAddIn.ViewModels
             _catalogBuilder?.InvalidateCache();
             InitializeDefaultRows();
             SetActivePreset(0);
+            ApplyFileNameViewMode(0);   // back to Standard (S) view, persisted to HKCU
             DoRefresh();
             StatusMessage = string.Format(LanguageLoader.Get("Msg_ResetDone"), DateTime.Now.ToString("HH:mm:ss"));
         }

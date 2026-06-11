@@ -117,7 +117,18 @@ The numbers below correspond to the markers on the screenshot:
    <!-- optional clip → ![Source object](images/source-object.gif) -->
 6. **The document-name header** — Shows the file name of whatever is being read.
    When you select more than one object, all names are listed and the text turns
-   red as a reminder that you are in multi-select.
+   red as a reminder that you are in multi-select. When multiple instances of the
+   same component are selected in an assembly, a `(N)` counter appears next to the
+   name — e.g. `Schraube_M8.ipt (6)`. Use the **view-mode button** on the left of the
+   header (its label shows the current mode and a `⇄` arrow — `S ⇄`, `C ⇄`, `D ⇄`),
+   or left-click the filename itself, to cycle through three display modes:
+   - **Plain (S)** — filename + count (default)
+   - **Compact (C)** — adds how many sub-assemblies contain this component, e.g. `(6, 2 IAM)`
+   - **Detailed (D)** — groups by sub-assembly, e.g. `Baugruppe.iam > Schraube_M8.ipt (3)`;
+     components directly in the top assembly are listed under the assembly's own name
+   The selected mode is remembered between sessions (and resets to **S** when you press
+   Reset). The header wraps to at most 2 lines (5 in Detailed) and then trims; hover
+   over it to see the full text. Long row values follow the same 2-line rule.
    <!-- optional clip → ![Document header](images/doc-header.gif) -->
 7. **Presets** — The three buttons at the bottom store row layouts you use often.
    Right-click a preset to save the current layout into it, or to export and
@@ -150,7 +161,11 @@ The numbers below correspond to the markers on the screenshot:
    search.
 2. **Creating and editing catalogs** — Create, rename, and delete catalogs, and
    edit their contents in a spreadsheet-style grid with copy/paste, fill-down, and
-   insert/delete of rows and columns.
+   insert/delete of rows and columns. Click a row-number to select the whole row;
+   click a column-header body to select the whole column; hold Ctrl or Shift to
+   add to or extend the selection. Right-click the selection to delete all chosen
+   rows or columns in one step. Click the sort caret (⇅/▲/▼) in a column header
+   to sort ascending or descending.
    <!-- optional clip → ![Catalog editor](images/catalog-editor.gif) -->
 3. **Importing and exporting catalogs** — Share a catalog as a file and import one
    from elsewhere, so catalogs can move between machines or teammates.

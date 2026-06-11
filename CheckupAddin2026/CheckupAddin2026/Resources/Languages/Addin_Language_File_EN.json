@@ -7,6 +7,11 @@
   "Tip_DragReorder": "Drag to reorder",
   "Tip_ClickEdit": "Click to edit",
 
+  "Lbl_ViewMode_Plain": "S ⇄",
+  "Lbl_ViewMode_Compact": "C ⇄",
+  "Lbl_ViewMode_Detailed": "D ⇄",
+  "Tip_ViewMode_Cycle": "Switch view (Standard / Compact / Detailed)",
+
   "Btn_CatalogBuilder": "📋 Logics-Constructor",
   "Tip_CatalogBuilder": "Open Logics-Constructor",
   "Btn_PurgeStyles": "Purge Styles",

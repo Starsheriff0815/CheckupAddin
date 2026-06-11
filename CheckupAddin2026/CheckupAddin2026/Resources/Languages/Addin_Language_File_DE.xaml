@@ -12,6 +12,11 @@
     <sys:String x:Key="Tip_DragReorder">Zeile verschieben</sys:String>
     <sys:String x:Key="Tip_ClickEdit">Klicken zum Bearbeiten</sys:String>
 
+    <sys:String x:Key="Lbl_ViewMode_Plain">S ⇄</sys:String>
+    <sys:String x:Key="Lbl_ViewMode_Compact">C ⇄</sys:String>
+    <sys:String x:Key="Lbl_ViewMode_Detailed">D ⇄</sys:String>
+    <sys:String x:Key="Tip_ViewMode_Cycle">Ansicht wechseln (Standard / Kompakt / Detailliert)</sys:String>
+
     <sys:String x:Key="Btn_CatalogBuilder">📋 Logik-Baukasten</sys:String>
     <sys:String x:Key="Tip_CatalogBuilder">Logik-Baukasten öffnen</sys:String>
     <sys:String x:Key="Btn_PurgeStyles">Stile Bereinigen</sys:String>
