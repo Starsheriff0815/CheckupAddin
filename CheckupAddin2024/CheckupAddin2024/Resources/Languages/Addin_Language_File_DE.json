@@ -7,6 +7,11 @@
   "Tip_DragReorder": "Zeile verschieben",
   "Tip_ClickEdit": "Klicken zum Bearbeiten",
 
+  "Lbl_ViewMode_Plain": "S ⇄",
+  "Lbl_ViewMode_Compact": "C ⇄",
+  "Lbl_ViewMode_Detailed": "D ⇄",
+  "Tip_ViewMode_Cycle": "Ansicht wechseln (Standard / Kompakt / Detailliert)",
+
   "Btn_CatalogBuilder": "📋 Logik-Baukasten",
   "Tip_CatalogBuilder": "Logik-Baukasten öffnen",
   "Btn_PurgeStyles": "Stile Bereinigen",
@@ -285,10 +290,11 @@
   "Info_Main_Intro":      "Objekt (IPT / IAM) wählen → Werte aktualisieren sich automatisch bei Dokumentwechsel.",
   "Info_Main_Edit":       "Auf einen Wert klicken → Wert inline bearbeiten → OK.",
   "Info_Main_Formula":    "ƒx-Schaltfläche → der Wert stammt aus einer Inventor-Formel (iProperty-Ausdruck oder Parametergleichung); ƒx drücken, um die dahinterliegende Gleichung anzuzeigen und zu bearbeiten.",
-  "Info_Main_RightClick": "Rechtsklick auf Wertfeld → Wert in Zwischenablage kopieren.",
+  "Info_Main_RightClick": "Rechtsklick auf Wertfeld → Wert in Zwischenablage kopieren.\nMauszeiger über Wertfeld → vollständiger Wert als Tooltip.",
   "Info_Main_Drag":       "Zeilen per Drag & Drop sortierbar.",
   "Info_Main_Preset":     "Rechtsklick auf Preset-Button → aktuellen Stand speichern, importieren oder exportieren.",
   "Info_Main_Refresh":    "Die Anzeige aktualisiert verfügbare Werte teils automatisch, auch wenn nur eine IPT / IDW geöffnet ist.",
+  "Info_Main_Header":    "Kopfzeile zeigt den Dateinamen der gelesenen Datei. Bei Mehrfachauswahl werden alle Namen aufgelistet (Text rot). Mehrfach vorhandene Instanzen zeigen einen Zähler, z. B. Schraube_M8.ipt (6).\n⇄-Schaltfläche links (oder Klick auf den Dateinamen) schaltet die Anzeigemodi durch:\n• Einfach — Name + Anzahl\n• Kompakt — Name + Anzahl + IAM-Anzahl (z. B. 6, 2 IAM)\n• Detailliert — gruppiert nach übergeordneter Unterbaugruppe\nGewählter Modus bleibt sitzungsübergreifend gespeichert. Hovern zeigt den vollständigen Text.",
 
   "Info_Roles_Title":          "Spaltenrollen — Übersicht",
   "Info_Roles_None":           "Keine besondere Funktion.\nHilfsspalten, interne Kennungen oder freie Textspalten.",
@@ -310,7 +316,7 @@
   "Info_Cards_Title":             "Katalog-Builder — Übersicht",
   "Info_Cards_CatalogTabDesc":    "Datentabellen, die in der Auswahlmaske angezeigt werden. Jeder Katalog enthält beliebig viele Spalten und Zeilen.\nNeu / ✎ / × → Katalog anlegen, umbenennen, löschen.\nImport / Export → Katalog als JSON-Datei sichern oder laden.",
   "Info_Cards_InlineTitle":       "Inline-Bearbeitung (Tabelle rechts)",
-  "Info_Cards_InlineBody":        "Klick auf eine Zelle → direkt bearbeiten.\nRechtsklick auf Zelle → Kontextmenü (Kopieren, Einfügen, Zeile/Spalte einfügen oder löschen, Sortieren …).\nSpalten-Header doppelklicken → Bezeichnung umbenennen.\nSpalten-Header Rechtsklick → Rollenrang ändern.\nSpaltenrolle (ComboBox unten) → festlegen, welcher Katalogwert in welches Feld geschrieben wird.\nℹ-Button → Erklärung aller Spaltenrollen.",
+  "Info_Cards_InlineBody":        "Klick auf eine Zelle → direkt bearbeiten.\nRechtsklick auf Zelle → Kontextmenü (Kopieren, Einfügen, Zeile/Spalte einfügen oder löschen, Sortieren …).\nZeilennummer-Klick → ganze Zeile markieren; Spalten-Header-Fläche → ganze Spalte markieren. Strg oder Umschalt für Mehrfach-/Bereichsauswahl. Kontextmenü auf Markierung → alle markierten Zeilen/Spalten auf einmal löschen.\nSpalten-Sortierpfeil (⇅/▲/▼) anklicken → Spalte auf-/absteigend sortieren.\nSpalten-Header doppelklicken → Bezeichnung umbenennen.\nSpalten-Header Rechtsklick → Rollenrang ändern.\nSpaltenrolle (ComboBox unten) → festlegen, welcher Katalogwert in welches Feld geschrieben wird.\nℹ-Button → Erklärung aller Spaltenrollen.",
   "Info_Cards_LogicTabDesc":      "Jede Logik verknüpft Felder im Hauptfenster mit Katalogen.\nNeu / ✎ / × → Logik anlegen, umbenennen, löschen.\nImport / Export → Logik als JSON-Datei sichern oder laden.",
   "Info_Cards_LogicCardsHeader":  "Logik-Karten",
   "Info_Cards_Dropdown_Desc":     "Auswahlfeld im Wertfeld → Eintrag aus Katalog wählen. Der PRI-Wert wird ins Zielfeld geschrieben.\nSEC: Nebentext im Dropdown. Anzeigespalten: weitere Spalten im Picker.",

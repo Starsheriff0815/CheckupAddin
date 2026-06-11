@@ -61,13 +61,21 @@ namespace CheckupAddIn.Services
         /// isMulti is true when 2 or more distinct part documents are selected.
         /// isAssemblyFallback is true when the active document is an assembly but no component
         /// occurrence was found in the SelectSet — the assembly itself was returned as a fallback.
+        /// instanceCounts maps each FullFileName to how many SelectSet occurrences resolve to it;
+        /// entries with count == 1 are omitted (callers suppress the "(1)" display).
+        /// subAsmGroups maps each immediate-parent IAM filename to a dict of (partFilename → count);
+        /// empty string key means the part is directly in the top-level assembly.
         /// Callers can use isAssemblyFallback to detect a "nothing selected" state in an IAM.
         /// Falls back to GetActiveOrSelectedDocument behaviour for 0 or 1 selections.
         /// </summary>
-        public List<Document> GetAllSelectedDocuments(out bool isMulti, out bool isAssemblyFallback)
+        public List<Document> GetAllSelectedDocuments(out bool isMulti, out bool isAssemblyFallback,
+            out Dictionary<string, int> instanceCounts,
+            out Dictionary<string, Dictionary<string, int>> subAsmGroups)
         {
             isMulti = false;
             isAssemblyFallback = false;
+            instanceCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            subAsmGroups   = new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
             var result = new List<Document>();
 
             if (_app.ActiveDocument == null) return result;
@@ -88,24 +96,45 @@ namespace CheckupAddIn.Services
                     return result;
                 }
 
-                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var seen      = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var rawCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
                 int count = selectSet2.Count;
                 for (int i = 1; i <= count; i++)
                 {
                     try
                     {
                         object sel = selectSet2[i];
-                        var doc = TryResolveDocument(sel);
+                        ComponentOccurrence occ = TryResolveOccurrence(sel);
+                        if (occ == null) continue;
 
-                        if (doc != null)
+                        Document doc;
+                        try { doc = (Document)occ.Definition.Document; }
+                        catch { continue; }
+
+                        string path = "";
+                        try { path = doc.FullFileName; } catch { path = doc.DisplayName; }
+
+                        int c;
+                        rawCounts[path] = rawCounts.TryGetValue(path, out c) ? c + 1 : 1;
+                        if (seen.Add(path)) result.Add(doc);
+
+                        string partName  = System.IO.Path.GetFileName(path);
+                        string parentIam = GetImmediateParentSubAsmFilename(occ);
+                        Dictionary<string, int> partDict;
+                        if (!subAsmGroups.TryGetValue(parentIam, out partDict))
                         {
-                            string path = "";
-                            try { path = doc.FullFileName; } catch { path = doc.DisplayName; }
-                            if (seen.Add(path)) result.Add(doc);
+                            partDict = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                            subAsmGroups[parentIam] = partDict;
                         }
+                        int pc;
+                        partDict[partName] = partDict.TryGetValue(partName, out pc) ? pc + 1 : 1;
                     }
                     catch { }
                 }
+
+                // Only expose counts > 1 — callers treat a missing key as count == 1.
+                foreach (var kv in rawCounts)
+                    if (kv.Value > 1) instanceCounts[kv.Key] = kv.Value;
 
                 if (result.Count == 0)
                 {
@@ -122,44 +151,54 @@ namespace CheckupAddIn.Services
             return result;
         }
 
-        // Resolves a SelectSet item to its owner Document.
+        // Returns the filename of the immediate parent sub-assembly, or "" for top-level components.
+        private static string GetImmediateParentSubAsmFilename(ComponentOccurrence occ)
+        {
+            try
+            {
+                ComponentOccurrence parent = occ.ParentOccurrence;
+                if (parent == null) return "";
+                string fullPath = "";
+                try { fullPath = ((Document)parent.Definition.Document).FullFileName; } catch { return ""; }
+                return System.IO.Path.GetFileName(fullPath);
+            }
+            catch { return ""; }
+        }
+
+        // Resolves a SelectSet item to its ComponentOccurrence.
         // Handles direct ComponentOccurrence selection and indirect selection
         // (face, edge, feature) via late-bound COM property lookup.
-        private static Document TryResolveDocument(object sel)
+        private static ComponentOccurrence TryResolveOccurrence(object sel)
         {
             if (sel == null) return null;
 
-            if (sel is ComponentOccurrence occ)
-            {
-                var def = occ.Definition;
-                return (Document)def.Document;
-            }
+            if (sel is ComponentOccurrence occ) return occ;
 
             try
             {
-                var occ2 = (ComponentOccurrence)Microsoft.VisualBasic.Interaction.CallByName(
+                ComponentOccurrence occ2 = (ComponentOccurrence)Microsoft.VisualBasic.Interaction.CallByName(
                     sel, "ContainingOccurrence", Microsoft.VisualBasic.CallType.Get);
-                if (occ2 != null)
-                {
-                    var def2 = occ2.Definition;
-                    return (Document)def2.Document;
-                }
+                if (occ2 != null) return occ2;
             }
             catch { }
 
             try
             {
-                var occ3 = (ComponentOccurrence)Microsoft.VisualBasic.Interaction.CallByName(
+                ComponentOccurrence occ3 = (ComponentOccurrence)Microsoft.VisualBasic.Interaction.CallByName(
                     sel, "Occurrence", Microsoft.VisualBasic.CallType.Get);
-                if (occ3 != null)
-                {
-                    var def3 = occ3.Definition;
-                    return (Document)def3.Document;
-                }
+                if (occ3 != null) return occ3;
             }
             catch { }
 
             return null;
+        }
+
+        // Kept for GetActiveOrSelectedDocument which still resolves to Document directly.
+        private static Document TryResolveDocument(object sel)
+        {
+            ComponentOccurrence occ = TryResolveOccurrence(sel);
+            if (occ == null) return null;
+            try { return (Document)occ.Definition.Document; } catch { return null; }
         }
     }
 }

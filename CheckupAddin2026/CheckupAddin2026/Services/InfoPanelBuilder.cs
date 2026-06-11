@@ -19,6 +19,7 @@ namespace CheckupAddIn.Services
             AddBullet(p, L("Info_Main_Drag"));
             AddBullet(p, L("Info_Main_Preset"));
             AddBullet(p, L("Info_Main_Refresh"));
+            AddBullet(p, L("Info_Main_Header"));
             return p;
         }
 

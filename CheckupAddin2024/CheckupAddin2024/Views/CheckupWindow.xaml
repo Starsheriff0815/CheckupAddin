@@ -510,20 +510,43 @@
 
     <DockPanel Margin="12" Grid.IsSharedSizeScope="True">
 
-        <!-- TOP: Filename row — Grid so Col 2 (SharedSizeGroup="FieldSel") aligns with
-             the field-selector column in the rows below. Col 0 is left-aligned "File:" label. -->
+        <!-- TOP: Filename row — Grid so Col 3 (SharedSizeGroup="FieldSel") aligns with
+             the field-selector column in the rows below. Col 0 (24px) aligns above drag handles. -->
         <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto" SharedSizeGroup="FieldSel"/>
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="{DynamicResource Lbl_File}" FontWeight="Bold"
+            <!-- Col 0: View-mode cycle button. Label (current mode letter + ⇄ symbol) comes
+                 from the language catalog via FileNameViewModeLabel; each click cycles the mode.
+                 Left margin = 7px so the button's left edge lines up with the row drag handles
+                 (handle Grid is 10px wide, centered in the rows' 24px Col 0 → (24-10)/2 = 7). -->
+            <Button Grid.Column="0"
+                    HorizontalAlignment="Left"
+                    Margin="7,2,3,2"
+                    Content="{Binding FileNameViewModeLabel}"
+                    ToolTip="{DynamicResource Tip_ViewMode_Cycle}"
+                    Command="{Binding CycleFileNameViewModeCommand}"
+                    Style="{StaticResource BarBtn}"
+                    Background="{DynamicResource CheckupButtonBackground}"
+                    FontSize="13"/>
+            <TextBlock Grid.Column="1" Text="{DynamicResource Lbl_File}" FontWeight="Bold"
                        Foreground="{DynamicResource CheckupLabelText}"
-                       Margin="0,0,8,0" VerticalAlignment="Center"/>
-            <TextBlock Grid.Column="1" Text="{Binding FileName}" FontWeight="Bold"
-                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-            <Button Grid.Column="2" Style="{StaticResource BarBtn}"
+                       Margin="4,0,8,0" VerticalAlignment="Center"/>
+            <TextBlock Grid.Column="2" Text="{Binding FileName}" FontWeight="Bold"
+                       VerticalAlignment="Center"
+                       TextWrapping="Wrap"
+                       MaxHeight="{Binding FileNameMaxHeight}"
+                       TextTrimming="CharacterEllipsis"
+                       ToolTip="{Binding FileName}">
+                <TextBlock.InputBindings>
+                    <MouseBinding Gesture="LeftClick"
+                                  Command="{Binding CycleFileNameViewModeCommand}"/>
+                </TextBlock.InputBindings>
+            </TextBlock>
+            <Button Grid.Column="3" Style="{StaticResource BarBtn}"
                     Content="{DynamicResource Btn_CatalogBuilder}"
                     ToolTip="{DynamicResource Tip_CatalogBuilder}"
                     Background="{DynamicResource CheckupButtonBackground}"
@@ -796,7 +819,10 @@
                                                Background="Transparent"
                                                VerticalAlignment="Center" HorizontalAlignment="Stretch"
                                                Margin="4,0,8,0"
+                                               TextWrapping="Wrap"
+                                               MaxHeight="36"
                                                TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding DisplayValue}"
                                                MouseRightButtonUp="Value_RightClick"
                                                Style="{StaticResource ValueTextBlockStyle}"
                                                Visibility="{Binding IsNormalDisplayMode, Converter={StaticResource BoolToVis}}">
@@ -816,8 +842,8 @@
                                             Visibility="{Binding IsValueMismatchDisplayMode, Converter={StaticResource BoolToVis}}">
                                         <Border.Style>
                                             <Style TargetType="Border">
-                                                <Setter Property="Cursor" Value="Arrow"/>
-                                                <Setter Property="ToolTip" Value="{x:Null}"/>
+                                                <Setter Property="Cursor"  Value="Arrow"/>
+                                                <Setter Property="ToolTip" Value="{Binding DisplayValue}"/>
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding IsWritableField}" Value="True">
                                                         <Setter Property="Cursor"  Value="IBeam"/>
@@ -831,29 +857,28 @@
                                                           Command="{Binding DataContext.StartInlineEditCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                           CommandParameter="{Binding}"/>
                                         </Border.InputBindings>
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="{Binding MatchedPart}"
-                                                       TextTrimming="CharacterEllipsis"
-                                                       VerticalAlignment="Center"/>
-                                            <TextBlock Text="{Binding UnmatchedPart}"
-                                                       TextTrimming="CharacterEllipsis"
-                                                       VerticalAlignment="Center"
-                                                       Foreground="{DynamicResource CheckupErrorText}"/>
-                                        </StackPanel>
+                                        <!-- Single TextBlock with two Runs so matched/unmatched flow
+                                             together and wrap up to 2 lines (then ellipsis). -->
+                                        <TextBlock TextWrapping="Wrap" MaxHeight="36"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center"><Run Text="{Binding MatchedPart}"/><Run Text="{Binding UnmatchedPart}" Foreground="{DynamicResource CheckupErrorText}"/></TextBlock>
                                     </Border>
 
-                                    <!-- Sub-col 0+1: Multi-token display (Logic rows with MultiPick/PairTransform card) -->
+                                    <!-- Sub-col 0+1: Multi-token display (Logic rows with MultiPick/PairTransform card).
+                                         WrapPanel auto-flows tokens; MaxHeight + ClipToBounds caps at 2 lines. -->
                                     <Border Grid.Column="0" Grid.ColumnSpan="2"
                                             Background="Transparent"
                                             HorizontalAlignment="Stretch"
-                                            MinHeight="20"
+                                            VerticalAlignment="Center"
+                                            MinHeight="20" MaxHeight="36"
+                                            ClipToBounds="True"
                                             Margin="4,0,2,0"
                                             MouseRightButtonUp="Value_RightClick"
                                             Visibility="{Binding IsMultiTokenDisplayMode, Converter={StaticResource BoolToVis}}">
                                         <Border.Style>
                                             <Style TargetType="Border">
-                                                <Setter Property="Cursor" Value="Arrow"/>
-                                                <Setter Property="ToolTip" Value="{x:Null}"/>
+                                                <Setter Property="Cursor"  Value="Arrow"/>
+                                                <Setter Property="ToolTip" Value="{Binding DisplayValue}"/>
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding IsWritableField}" Value="True">
                                                         <Setter Property="Cursor"  Value="IBeam"/>
