@@ -13,7 +13,7 @@ lives. No setup knowledge needed.
 
 ## The Main Checkup Window
 
-![The main Checkup window](images/main-window.gif)
+![The main Checkup window](images/main-window-v2.gif)
 
 *The Main Addin Window Presents Users with a Maximum of 30 Rows which can be Sorted via Drag & Drop Handles.
 Users can Add / Remove Rows from the Dropdown Menu on the Right. And Select, for the Row on which the Dropdown Menu
@@ -129,7 +129,7 @@ The numbers below correspond to the markers on the screenshot:
    The selected mode is remembered between sessions (and resets to **S** when you press
    Reset). The header wraps to at most 2 lines (5 in Detailed) and then trims; hover
    over it to see the full text. Long row values follow the same 2-line rule.
-   <!-- optional clip → ![Document header](images/doc-header.gif) -->
+   ![The document-name header showing the instance counter across different selections and the three S / C / D display modes](images/main-window-Instances-counter.gif)
 7. **Presets** — The three buttons at the bottom store row layouts you use often.
    Right-click a preset to save the current layout into it, or to export and
    import layouts — letting you build a personal library and share it between
