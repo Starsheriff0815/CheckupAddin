@@ -36,7 +36,8 @@
 param(
     [string]   $Tag,
     [int[]]    $Years = @(2024, 2025, 2026, 2027),
-    [switch]   $Publish
+    [switch]   $Publish,
+    [string]   $Repo = 'Starsheriff0815/CheckupAddin'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -150,12 +151,13 @@ $zips | ForEach-Object { Write-Host "  $_" }
 
 if ($Publish) {
     if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { throw 'gh CLI not found; cannot publish.' }
-    Write-Host "`nPublishing GitHub release $Tag ..." -ForegroundColor Cyan
-    gh release create $Tag @zips --title $Tag --generate-notes
+    Write-Host "`nPublishing GitHub release $Tag to $Repo ..." -ForegroundColor Cyan
+    # --repo is explicit so the release never lands on the wrong remote (e.g. the internal archive).
+    gh release create $Tag @zips --repo $Repo --title $Tag --generate-notes
     if ($LASTEXITCODE -ne 0) { throw "gh release create failed (exit $LASTEXITCODE)." }
-    Write-Host "Published $Tag with $($zips.Count) asset(s)." -ForegroundColor Green
+    Write-Host "Published $Tag to $Repo with $($zips.Count) asset(s)." -ForegroundColor Green
 } else {
     Write-Host "`nNot published. Review dist\, then either:" -ForegroundColor Yellow
     Write-Host "  pwsh ./build_release.ps1 -Tag $Tag -Publish"
-    Write-Host "  or:  gh release create $Tag dist\*.zip --generate-notes"
+    Write-Host "  or:  gh release create $Tag dist\*.zip --repo $Repo --generate-notes"
 }
