@@ -26,12 +26,14 @@ This is 99% my personal opinion and how I imagine things should work. So don’t
 - Style Purger: one-click cleanup of unused styles in IDW, IPT, and IAM documents
 - German and English UI **\[more can be Added\]** (language detected automatically from Inventor)
 
-Two Tryed and Tested variants are included:
+A variant is included for each supported Inventor release. Each variant is built against **its own** version's Inventor interop assembly:
 
 | Variant          | Inventor version          | Framework     |
 |------------------|---------------------------|---------------|
-| **CheckupAddin2026** | Inventor 2026 (API v29.x) | .NET 8.0, x64 |
 | **CheckupAddin2024** | Inventor 2024 (API v28.x) | .NET 4.8, x64 |
+| **CheckupAddin2025** | Inventor 2025 (API v29.x) | .NET 4.8, x64 |
+| **CheckupAddin2026** | Inventor 2026 (API v30.x) | .NET 8.0, x64 |
+| **CheckupAddin2027** | Inventor 2027 (API v31.x) | .NET 8.0, x64 |
 
 > 🚀 **New to Checkup?** Start with the [Getting Started visual tour](docs/Getting-Started.md) — a quick, picture-led look at the windows and what each part does, in plain language.
 
@@ -43,8 +45,10 @@ Two Tryed and Tested variants are included:
 
 Go to the [Releases](../../releases) page and download the latest release zip for your Inventor version:
 
-- `CheckupAddin2026_vX.X.X.zip` for Inventor 2026
 - `CheckupAddin2024_vX.X.X.zip` for Inventor 2024
+- `CheckupAddin2025_vX.X.X.zip` for Inventor 2025
+- `CheckupAddin2026_vX.X.X.zip` for Inventor 2026
+- `CheckupAddin2027_vX.X.X.zip` for Inventor 2027
 
 ### 2. Unpack
 
@@ -54,11 +58,23 @@ Extract the zip to a permanent folder on your machine. Example:
 C:\Addins\CheckupAddin2026\
 ```
 
-> **Multi-user / network install:** You can place the extracted files on a UNC share (e.g. `\\server\Addins\CheckupAddin2026\`). The DLL and support files load from that shared location; each user only needs the manifest file (step 4) on their own machine.
+> **Multi-user / network install:** You can place the extracted files on a UNC share (e.g. `\\server\Addins\CheckupAddin2026\`). The DLL and support files load from that shared location; each user only needs the manifest file (step 6) on their own machine.
 
-### 3. Create the manifest file
+### 3. Copy the Inventor Interop assembly
 
-Inside the extracted folder you will find `Autodesk.CheckupAddIn2026.addin.template` (or `...2024...`).
+The release zip does **not** include `Autodesk.Inventor.Interop.dll` — it is proprietary Autodesk software and is never redistributed (see [License](#license) below). Each variant is built against **its own** Inventor version's copy of this file, so copy the interop from the **matching** Inventor installation into the folder you extracted in step 2. For example, for `CheckupAddin2026`:
+
+```
+copy "C:\Program Files\Autodesk\Inventor 2026\Bin\Public Assemblies\Autodesk.Inventor.Interop.dll" "C:\Addins\CheckupAddin2026\"
+```
+
+Use the path for your version — `...\Inventor 2024\...`, `...\Inventor 2025\...`, `...\Inventor 2026\...`, or `...\Inventor 2027\...` — copied into the corresponding extracted folder. Because you install the variant that matches your Inventor, the correct interop is always available locally on that machine.
+
+Without this file the add-in fails to load — `CheckupAddIn.dll` has a hard type-load dependency on the interop assembly, so Inventor reports it as a failed/blocked add-in with no further detail.
+
+### 4. Create the manifest file
+
+Inside the extracted folder you will find `Autodesk.CheckupAddIn2026.addin.template` (named for your variant, e.g. `...2024...`, `...2025...`, `...2027...`).
 
 1. Open the template file in any text editor (Notepad is fine).
 2. Replace `[ASSEMBLY_PATH]` with the full path to the folder where you unpacked the files. Example:
@@ -81,16 +97,18 @@ Inside the extracted folder you will find `Autodesk.CheckupAddIn2026.addin.templ
 3. Fill in `<Author>` and `<Company>` with your own values (or leave the placeholders).
 4. Save the file as `Autodesk.CheckupAddIn2026.addin` (remove the `.template` suffix).
 
-### 4. Place the manifest
+### 5. Place the manifest
 
 Copy the `.addin` file you just created to Inventor's add-ins folder:
 
+- **2024:** `%APPDATA%\Autodesk\ApplicationPlugins\` (or `%PROGRAMDATA%\Autodesk\Inventor 2024\Addins\`)
+- **2025:** `%PROGRAMDATA%\Autodesk\Inventor 2025\Addins\`
 - **2026:** `%PROGRAMDATA%\Autodesk\Inventor 2026\Addins\`
-- **2024:** `%APPDATA%\Autodesk\ApplicationPlugins\`
+- **2027:** `%PROGRAMDATA%\Autodesk\Inventor 2027\Addins\`
 
-> **Multi-user note:** Each user copies only the `.addin` manifest to their own machine. The manifest points to the shared network path from step 3. Only the manifest needs to be on each user's local machine — everything else stays on the share.
+> **Multi-user note:** Each user copies only the `.addin` manifest to their own machine. The manifest points to the shared network path from step 4. Only the manifest needs to be on each user's local machine — everything else stays on the share.
 
-### 5. Start Inventor and unblock the add-in
+### 6. Start Inventor and unblock the add-in
 
 Inventor reads the manifest on startup and loads the add-in automatically.
 
@@ -127,18 +145,34 @@ Drawing ribbon tabs.
 Requirements:
 
 - Visual Studio 2022 (v17.14 or later)
-- Autodesk Inventor 2026 installed (for 2026 build) — the COM interop DLL is referenced from the Inventor install folder
-- Autodesk Inventor 2024 installed (for 2024 build)
+- The Autodesk Inventor version matching the variant you want to build — its COM interop DLL is referenced per-version from `lib\<year>\`
 
-Open `CheckupAddin2026.sln` or `CheckupAddin2024.sln` and build with **x64 / Debug or Release**.
-
-From the command line (full MSBuild path required — `msbuild` is not on PATH by default):
+**Provide the interop assemblies.** `Autodesk.Inventor.Interop.dll` is proprietary and is **not** committed to this repository (see [License](#license)). Each variant references its own copy from `lib\<year>\`. Populate those folders from your local Inventor installs before building:
 
 ```
-"C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe" CheckupAddin2026\CheckupAddin2026.csproj /p:Configuration=Release /p:Platform=x64
+pwsh ./fetch_interop.ps1
 ```
 
-Build output is placed in `CheckupAddin2026\bin\`.
+This copies the interop from each installed `...\Inventor <year>\Bin\Public Assemblies\` into `lib\<year>\` (versions you don't have installed are skipped).
+
+Open the matching solution (`CheckupAddin2024.sln` … `CheckupAddin2027.sln`) and build with **x64 / Debug or Release**, or from the command line (full MSBuild path required — `msbuild` is not on PATH by default):
+
+```
+"C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe" CheckupAddin2026\CheckupAddin2026\CheckupAddin2026.csproj /p:Configuration=Release /p:Platform=x64
+```
+
+Build output is placed in `CheckupAddin<year>\CheckupAddin<year>\bin\`.
+
+### Building the release bundles
+
+`build_release.ps1` builds, packages, and (optionally) publishes the release zips for all variants. It uses 7-Zip if installed, otherwise PowerShell's `Compress-Archive`:
+
+```
+pwsh ./build_release.ps1                          # build + zip all variants into dist\
+pwsh ./build_release.ps1 -Tag v0.13.0 -Publish    # also create the GitHub release via gh
+```
+
+Releases are built **locally** — there is no CI build, because a hosted runner has no Inventor install to reference the interop from.
 
 ---
 

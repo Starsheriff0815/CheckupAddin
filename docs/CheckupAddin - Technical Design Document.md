@@ -184,6 +184,7 @@ Rules common to all modes:
   - **Field missing from current selection** (preset entry not available on the selected object): label still shown, but greyed out + strikethrough. Dropdown stays closed; no error.
   - **Non-editable field**: label shown greyed out (no strikethrough).
   - **Special Function entry**: label prefixed with `S:` — the `S:` prefix is rendered in red; the rest of the label in normal color.
+  - **Right-click does nothing here** — `FieldSelectorBtn` (the closed-state header button) has no right-click handler, so it does **not** copy its label to clipboard. Right-click-to-copy is a **Value Field-only** gesture (see below). Right-click inside the *opened* popup is a different, unrelated gesture — pin/unpin a favorite (Zone 3/4, see below) — never copy.
 
   **Opened state — list contents:**
 
@@ -267,6 +268,7 @@ Three groups from left to right. Buttons auto-size to their label text; groups n
 - Italic text, `CheckupSecondaryText` color, FontSize 11.
 - Bound to `StatusMessage` on CheckupViewModel — updated after writes, style purge, refresh errors, etc.
 - A `Separator` line sits between the status message and the button row.
+- **Fixed single-line height** (`Height="16"`, `TextWrapping="NoWrap"`, `TextTrimming="CharacterEllipsis"`, `ToolTip` shows the full text). `StatusMessage` can embed a multi-line `FileName` (Detailed/D view mode joins sub-assembly groups with `\n`) when multiple objects are selected; without a height cap the bar grows to fit every line and pushes row content out of view. The bar must never grow past one row — long/multi-line messages are truncated with an ellipsis, full text available via tooltip.
 
 **Refresh mechanism (hybrid):**
 
@@ -1626,7 +1628,7 @@ The Catalog Editor is deliberately designed to **mimic standard spreadsheet beha
 - COM collections: use `.Item(name)` not `[name]` indexer — C# `[]` is unreliable on COM collections.
 - Active styles block `UpdateFromGlobal()` — Update Styles dialog reads on-disk state.
 - `AppContext.BaseDirectory` in COM-hosted .NET 8 points to Inventor's process dir, not add-in DLL dir. Use `typeof(SomeAddinClass).Assembly.Location` instead.
-- **`Parameter.Units` / `Parameter.Value` are COM dual-accessors** the C# compiler won't bind as plain properties (CS1545 / CS1503). Use `param.get_Units()` (returns `object`) and `Convert.ToDouble(param.Value)`. Used by `PropertyReader.ReadParameterValue` for value-first PARAM display (see §5.16).
+- **`Parameter.Units` / `Parameter.Value` are COM dual-accessors** the C# compiler won't bind as plain properties (CS1545 / CS1503). Use `param.get_Units()` (returns `object`) and `Convert.ToDouble(param.Value)`. Used by `PropertyReader.ReadParameterValue` for value-first PARAM display (see §5.16). **Text-type parameters return a `string` from `.Value`** (not a number) — `Convert.ToDouble` throws and the catch block used to fall through to the `NotAvailable` sentinel, so a Text parameter with an equation showed `n/a` even though `ReadParameterExpression`/`IsParameterFormula` correctly detected the formula and offered the fx toggle. Fixed by checking `up.Value is string s` first and returning it directly (no unit formatting — text parameters are unitless); only a non-string `.Value` goes through `Convert.ToDouble` + `FormatParameterValue`.
 - **iProperty formula detection:** `Property.Expression` (the `=…` formula behind a text iProperty) is read via late binding (`CallByName(prop,"Expression",Get)`) — never a hard interop member call, so a member-shape change can't break the build. Writing a formula probes `Property.Expression =` then `Property.Value = "=…"`; see §5.16.
 
 
@@ -1846,14 +1848,16 @@ Full notices: `THIRD_PARTY_NOTICES` in the repository root.
 
 | Component | License | Notes |
 |---|---|---|
-| Autodesk Inventor Interop (`Autodesk.Inventor.Interop.dll`) | Proprietary (Autodesk) | **Not redistributed.** Referenced from a local Inventor install at build time. Requires a licensed copy of Autodesk Inventor 2026 / 2024 on the build machine. |
-| System.Drawing.Common (NuGet, v8.0.0) | MIT | Used in CheckupAddin2026 only. |
+| Autodesk Inventor Interop (`Autodesk.Inventor.Interop.dll`) | Proprietary (Autodesk) | **Not redistributed** (gitignored, never committed, not shipped in any release zip). Each variant references its own version's PIA from `lib\<year>\`, copied per-machine from the matching local Inventor install by `fetch_interop.ps1`. Requires a licensed copy of the matching Autodesk Inventor (2024–2027) on the build machine. |
+| System.Drawing.Common (NuGet, v8.0.0) | MIT | Used in the .NET 8 variants (CheckupAddin2026 / 2027). |
 | .NET 8 runtime, WPF, Microsoft.VisualBasic.Core | MIT | Part of the .NET platform. `Microsoft.VisualBasic.Interaction.CallByName` is used for late-binding COM property access throughout the service layer. |
-| Newtonsoft.Json (NuGet) | MIT | Used in CheckupAddin2024 (.NET 4.8) in place of System.Text.Json. |
+| Newtonsoft.Json (NuGet) | MIT | Used in the .NET 4.8 variants (CheckupAddin2024 / 2025) in place of System.Text.Json. Must ship in the release zip (packaged by `build_release.ps1`) — .NET Framework has no fallback resolution for a missing PackageReference DLL; this was missing from packaging until fixed 2026-06-16. |
 
 ### Inventor API Caveat
 
 The GPL-3.0 formally requires all linked libraries to be free software. `Autodesk.Inventor.Interop.dll` is proprietary. This is handled by the established open-source add-in practice: the assembly is never distributed with the project, users must own a licensed copy of Inventor, and the interop DLL is solely an interface layer to a separately-licensed host application. This situation is analogous to the "system library" exception and is universally accepted for Inventor/Revit/SolidWorks add-ins.
+
+**The release zip does not run as-is** — `CheckupAddIn.dll` hard-references `Autodesk.Inventor.Interop.dll` (it's a real type-load dependency, not resolved by Inventor's own native process), so the user must copy it from their own Inventor install (`...\Inventor <year>\Bin\Public Assemblies\Autodesk.Inventor.Interop.dll`, matching the variant) into the extracted add-in folder before first load — see README "Copy the Inventor Interop assembly" step. Confirmed empirically (`AssemblyLoadContext` probe, 2026-06-16): without the file present next to `CheckupAddIn.dll`, `Assembly.GetTypes()` throws `FileNotFoundException` for `Autodesk.Inventor.Interop`; `CheckupAddIn.deps.json` and `CheckupAddIn.pdb`, by contrast, are **not** required at runtime (deps.json's absence doesn't block load — the default ALC probing falls back to the app-base directory; pdb is debug symbols only). Each variant is built against **its own** Inventor version's copy of the interop DLL (`lib\<year>\`, populated by `fetch_interop.ps1`; see §7.2 / [[project_2024_vs_2026_differences]]), so a user installs the variant matching their Inventor and copies that same version's interop. The earlier limitation — everything built against the 2026 PIA, leaving an Inventor-2024-only machine with no validated path — no longer applies.
 
 ---
 
