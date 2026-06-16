@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Addin Type="Standard">
+
+	<!--
+    SETUP INSTRUCTIONS
+    ==================
+    1. Copy this file and rename the copy to: Autodesk.CheckupAddIn2025.addin
+    2. Replace [ASSEMBLY_PATH] below with the full path to CheckupAddIn2025.dll on your machine.
+       Single-user example:  C:\My Addins\CheckupAddin2025\CheckupAddIn2025.dll
+       Multi-user / network: \\server\Addins\CheckupAddin2025\CheckupAddIn2025.dll
+    3. Fill in your name and company (or leave as-is).
+    4. Copy the completed .addin file to: %APPDATA%\Autodesk\Inventor Addins\
+       For multi-user deployments: each user copies the .addin file to their own
+       %APPDATA%\Autodesk\Inventor Addins\ folder, pointing to the shared network path.
+    5. Start Inventor.
+
+    IMPORTANT: These GUIDs must match the ones in StandardAddInServer.cs.
+    Do NOT change them — Inventor uses them to identify this add-in.
+  -->
+	<ClassId>{04B466E8-07D5-4D83-A5F8-9E29BC01F5C9}</ClassId>
+	<ClientId>{04B466E8-07D5-4D83-A5F8-9E29BC01F5C9}</ClientId>
+
+	<DisplayName>Checkup 2025</DisplayName>
+	<Description>Checkup – Fast Property Editor / Viewer for Inventor 2025.</Description>
+	<Author>Your Name</Author>
+	<Company>Your Company</Company>
+
+	<Assembly>[ASSEMBLY_PATH]\CheckupAddIn2025.dll</Assembly>
+
+	<LoadOnStartUp>1</LoadOnStartUp>
+
+	<UserUnloadable>1</UserUnloadable>
+
+	<SupportedSoftwareVersionGreaterThan>28..</SupportedSoftwareVersionGreaterThan>
+
+</Addin>

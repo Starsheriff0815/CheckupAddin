@@ -1,0 +1,113 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+
+    <!-- Designer-only language strings (German).
+         Change filename in CheckupWindow.xaml MergedDictionaries to Addin_Language_File_EN.xaml (or any future
+         language file) to preview a different language in the VS designer.
+         At runtime LanguageLoader.ApplyTo() merges the JSON-based dictionary on top, so this file
+         has no effect at runtime — it exists purely for VS designer preview. -->
+
+    <sys:String x:Key="Lbl_File">Datei:</sys:String>
+    <sys:String x:Key="Tip_DragReorder">Zeile verschieben</sys:String>
+    <sys:String x:Key="Tip_ClickEdit">Klicken zum Bearbeiten</sys:String>
+
+    <sys:String x:Key="Lbl_ViewMode_Plain">S ⇄</sys:String>
+    <sys:String x:Key="Lbl_ViewMode_Compact">C ⇄</sys:String>
+    <sys:String x:Key="Lbl_ViewMode_Detailed">D ⇄</sys:String>
+    <sys:String x:Key="Tip_ViewMode_Cycle">Ansicht wechseln (Standard / Kompakt / Detailliert)</sys:String>
+
+    <sys:String x:Key="Btn_PurgeStyles">Stile Bereinigen</sys:String>
+    <sys:String x:Key="Btn_Info">Info</sys:String>
+    <sys:String x:Key="Btn_Reset">Reset</sys:String>
+    <sys:String x:Key="Btn_Close">Schließen</sys:String>
+    <sys:String x:Key="Btn_Apply">Anwenden</sys:String>
+    <sys:String x:Key="Btn_Cancel">Abbrechen</sys:String>
+    <sys:String x:Key="Tip_Apply">Anwenden (Enter)</sys:String>
+    <sys:String x:Key="Tip_Cancel">Abbrechen (Esc)</sys:String>
+
+    <sys:String x:Key="Menu_SavePreset">Aktuellen Stand in diesem Preset speichern</sys:String>
+    <sys:String x:Key="Menu_ExportPresets">Presets exportieren...</sys:String>
+    <sys:String x:Key="Menu_ImportPresets">Presets importieren...</sys:String>
+
+    <sys:String x:Key="Win_Title_Checkup">Checkup</sys:String>
+    <sys:String x:Key="Win_Title_CheckupInfo">Checkup Info</sys:String>
+    <sys:String x:Key="Win_Title_LogicConstructor">Logik-Baukasten</sys:String>
+    <sys:String x:Key="Win_Title_LogicConstructorInfo">Logik-Baukasten Info</sys:String>
+
+    <sys:String x:Key="CtxMenu_MoveRowUp">▲ Zeile nach oben</sys:String>
+    <sys:String x:Key="CtxMenu_MoveRowDown">▼ Zeile nach unten</sys:String>
+    <sys:String x:Key="FindBar_Counter">{0} / {1}</sys:String>
+    <sys:String x:Key="FindBar_NoMatch">Kein Treffer</sys:String>
+
+    <sys:String x:Key="CatBuilder_Lbl_UpdateAvailable">Update verfügbar — Verteilungsversion ist neuer</sys:String>
+    <sys:String x:Key="CatBuilder_Btn_Update">Aktualisieren</sys:String>
+    <sys:String x:Key="Msg_UpdateCatalog">Die Verteilungsversion dieses Katalogs ist neuer als Ihre lokale Kopie. Fortfahren?</sys:String>
+    <sys:String x:Key="Msg_UpdateCapSet">Die Verteilungsversion dieser Fähigkeit ist neuer als Ihre lokale Kopie. Fortfahren?</sys:String>
+
+    <sys:String x:Key="Dlg_SavePreset_Title">Preset speichern</sys:String>
+    <sys:String x:Key="Dlg_SavePreset_Label">Preset benennen:</sys:String>
+
+    <sys:String x:Key="Grp_SheetMetal">Blech</sys:String>
+    <sys:String x:Key="Grp_Document">Dokument</sys:String>
+    <sys:String x:Key="Grp_iProperties">iProperties</sys:String>
+    <sys:String x:Key="Grp_iPropertiesCustom">iProperties (Benutzerdefiniert)</sys:String>
+    <sys:String x:Key="Grp_ParamUser">Parameter – Benutzer</sys:String>
+    <sys:String x:Key="Grp_ParamModel">Parameter – Modell</sys:String>
+
+    <sys:String x:Key="Field_None">(kein)</sys:String>
+    <sys:String x:Key="Field_Material">Material</sys:String>
+    <sys:String x:Key="Field_Appearance">Darstellung</sys:String>
+    <sys:String x:Key="Field_UnitsLength">Einheiten (Länge)</sys:String>
+    <sys:String x:Key="Field_UnitsAngle">Einheiten (Winkel)</sys:String>
+    <sys:String x:Key="Field_UnitsTime">Einheiten (Zeit)</sys:String>
+    <sys:String x:Key="Field_UnitsMass">Einheiten (Masse)</sys:String>
+    <sys:String x:Key="Field_LinearPrecision">Lineare Genauigkeit</sys:String>
+    <sys:String x:Key="Field_AngularPrecision">Winkelgenauigkeit</sys:String>
+    <sys:String x:Key="Field_ModelingDimDisplay">Modellierungsmaß</sys:String>
+    <sys:String x:Key="Field_DefaultBOMStructure">Standard Stückliste</sys:String>
+
+    <sys:String x:Key="Action_AddRow">➕  Zeile hinzufügen</sys:String>
+    <sys:String x:Key="Action_RemoveRow">➖  Zeile entfernen</sys:String>
+
+    <sys:String x:Key="Msg_NoDocument">Kein Dokument aktiv.</sys:String>
+    <sys:String x:Key="Msg_Updated">Aktualisiert – {0} – {1}</sys:String>
+    <sys:String x:Key="Msg_MaxRows">Maximale Zeilenanzahl ({0}) erreicht.</sys:String>
+    <sys:String x:Key="Msg_WriteErrors">Schreibfehler: {0} Dokument(e) fehlgeschlagen.</sys:String>
+    <sys:String x:Key="Msg_PresetApplied">Preset '{0}' angewendet – {1}</sys:String>
+    <sys:String x:Key="Msg_PresetSaved">Preset '{0}' gespeichert – {1}</sys:String>
+    <sys:String x:Key="Msg_PresetsExported">Presets exportiert – {0}</sys:String>
+    <sys:String x:Key="Msg_ExportFailed">Export fehlgeschlagen: {0}</sys:String>
+    <sys:String x:Key="Msg_PresetsImported">Presets importiert – {0}</sys:String>
+    <sys:String x:Key="Msg_ImportFailed">Import fehlgeschlagen: {0}</sys:String>
+    <sys:String x:Key="Msg_ResetDone">Zurückgesetzt – {0}</sys:String>
+    <sys:String x:Key="Msg_NoDocForWrite">Kein Dokument verfügbar.</sys:String>
+
+    <sys:String x:Key="HelpText">Kurzanleitung – Info-Button klicken für Details.</sys:String>
+
+    <sys:String x:Key="BasicLogic_Concatenate">VERKETTEN</sys:String>
+    <sys:String x:Key="BasicLogic_IfElse">WENN / DANN</sys:String>
+    <sys:String x:Key="BasicLogic_Lookup">VERWEIS</sys:String>
+    <sys:String x:Key="BasicLogic_Format">TEXT</sys:String>
+    <sys:String x:Key="BasicLogic_Round">RUNDEN</sys:String>
+    <sys:String x:Key="BasicLogic_Value">WERT</sys:String>
+    <sys:String x:Key="BasicLogic_Str">STR</sys:String>
+    <sys:String x:Key="BasicLogic_Lte">KL.GLEICH</sys:String>
+    <sys:String x:Key="BasicLogic_Gte">GR.GLEICH</sys:String>
+    <sys:String x:Key="BasicLogic_Join">VERBINDEN</sys:String>
+    <sys:String x:Key="BasicLogic_Left">LINKS</sys:String>
+    <sys:String x:Key="BasicLogic_Right">RECHTS</sys:String>
+    <sys:String x:Key="BasicLogic_Mid">TEIL</sys:String>
+    <sys:String x:Key="BasicLogic_Trim">GLÄTTEN</sys:String>
+    <sys:String x:Key="BasicLogic_Upper">GROSS</sys:String>
+    <sys:String x:Key="BasicLogic_Lower">KLEIN</sys:String>
+    <sys:String x:Key="BasicLogic_Replace">ERSETZEN</sys:String>
+    <sys:String x:Key="BasicLogic_Abs">ABS</sys:String>
+    <sys:String x:Key="BasicLogic_Len">LÄNGE</sys:String>
+    <sys:String x:Key="BasicLogic_Contains">ENTHÄLT</sys:String>
+    <sys:String x:Key="BasicLogic_StartsWith">BEGINNT.MIT</sys:String>
+    <sys:String x:Key="BasicLogic_EndsWith">ENDET.MIT</sys:String>
+    <sys:String x:Key="BasicLogic_IsEmpty">IST.LEER</sys:String>
+    <sys:String x:Key="BasicLogic_Default">STANDARD</sys:String>
+
+</ResourceDictionary>

@@ -1,0 +1,13 @@
+{
+  "profiles": {
+    "CheckupAddin2025": {
+      "commandName": "Project"
+    },
+    "Inventor 2025 (DEU)": {
+      "commandName": "Executable",
+      "executablePath": "C:\\Program Files\\Autodesk\\Inventor 2025\\Bin\\Inventor.exe",
+      "commandLineArgs": "/language=DEU",
+      "workingDirectory": "C:\\Program Files\\Autodesk\\Inventor 2025\\Bin"
+    }
+  }
+}

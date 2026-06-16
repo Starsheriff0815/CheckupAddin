@@ -13,7 +13,7 @@
 		<GenerateAssemblyInfo>true</GenerateAssemblyInfo>
 		<Version>0.13.0</Version>
 		<Author>Norman Lindner</Author>
-		<Description>Checkup for Autodesk Inventor 2026</Description>
+		<Description>Checkup for Autodesk Inventor 2027</Description>
 		<OutputPath>bin\</OutputPath>
 		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
 		<AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
@@ -21,7 +21,7 @@
 
 	<ItemGroup>
 		<Reference Include="Autodesk.Inventor.Interop">
-			<HintPath>..\..\lib\2026\Autodesk.Inventor.Interop.dll</HintPath>
+			<HintPath>..\..\lib\2027\Autodesk.Inventor.Interop.dll</HintPath>
 			<EmbedInteropTypes>false</EmbedInteropTypes>
 			<Private>true</Private>
 		</Reference>
@@ -38,7 +38,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<None Update="Autodesk.CheckupAddIn2026.addin">
+		<None Update="Autodesk.CheckupAddIn2027.addin">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
 		<None Update="Checkup_Settings.json">

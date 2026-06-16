@@ -1,0 +1,69 @@
+{
+  "_Info": "Checkup Add-In 2025 — Checkup_Settings.json. Factory defaults. User-saved presets are stored in the Windows Registry (HKCU\\Software\\Checkup 2025\\Presets). Edit StylePurge to match your company template and style names.",
+  "_PathHelp": "For TemplateFilePath use forward slashes (Z:/Checkup/Standard.idw) OR escaped backslashes (Z:\\Checkup\\Standard.idw). A single backslash in JSON is an escape character; the loader auto-corrects common cases, but forward slashes always work.",
+
+  "StylePurge": {
+    "TemplateFilePath": "Z:/Checkup/Standard.idw",
+
+    "BorderDefinitions": [
+      "A4 Border",
+      "A3 Border",
+      "A2 Border",
+      "A1 Border",
+      "A0 Border"
+    ],
+
+    "TitleBlockDefinitions": [
+      "Standard Title Block"
+    ],
+
+    "SketchedSymbolsToCopy": [],
+
+    "SketchedSymbolsToDelete": []
+  },
+
+  "Presets": [
+    {
+      "Name": "Demo",
+      "IsDemo": true,
+      "FieldKeys": [
+        "IPROP|Description",
+        "IPROP|Part Number",
+        "DOC:Material",
+        "DOC:Appearance",
+        "IPROP|Revision Number",
+        "SPECIAL:LOGIC:demo-g03",
+        "SPECIAL:LOGIC:demo-g01",
+        "SPECIAL:LOGIC:demo-g08"
+      ]
+    },
+    {
+      "Name": "Demo",
+      "IsDemo": true,
+      "FieldKeys": [
+        "IPROP|Description",
+        "IPROP|Part Number",
+        "DOC:Material",
+        "DOC:Appearance",
+        "IPROP|Revision Number",
+        "SPECIAL:LOGIC:demo-g03",
+        "SPECIAL:LOGIC:demo-g01",
+        "SPECIAL:LOGIC:demo-g08"
+      ]
+    },
+    {
+      "Name": "Demo",
+      "IsDemo": true,
+      "FieldKeys": [
+        "IPROP|Description",
+        "IPROP|Part Number",
+        "DOC:Material",
+        "DOC:Appearance",
+        "IPROP|Revision Number",
+        "SPECIAL:LOGIC:demo-g03",
+        "SPECIAL:LOGIC:demo-g01",
+        "SPECIAL:LOGIC:demo-g08"
+      ]
+    }
+  ]
+}

@@ -1,6 +1,8 @@
 # ── Build output ──────────────────────────────────────────────────────────────
 **/bin/
 **/obj/
+# Local release staging produced by build_release.ps1
+/dist/
 
 # ── Visual Studio ──────────────────────────────────────────────────────────────
 **/.vs/
@@ -35,3 +37,11 @@ Exported_*_Presets.json
 **/.claude/
 CLAUDE.md
 /tools/
+
+# ── Inventor interop PIA ───────────────────────────────────────────────────────
+# Copied per-version from each locally installed Inventor's
+# Bin\Public Assemblies\ folder (run fetch_interop.ps1). Never committed —
+# it is part of the Autodesk install, not our source. Any machine with the
+# matching Inventor version installed can regenerate it.
+/lib/**/Autodesk.Inventor.Interop.dll
+/lib/Autodesk.Inventor.Interop.dll

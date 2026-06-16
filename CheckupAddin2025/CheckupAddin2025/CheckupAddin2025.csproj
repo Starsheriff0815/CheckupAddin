@@ -1,34 +1,34 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-		<TargetFramework>net8.0-windows</TargetFramework>
+		<TargetFramework>net48</TargetFramework>
 		<UseWPF>true</UseWPF>
 		<Platforms>x64</Platforms>
-		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
-		<EnableComHosting>true</EnableComHosting>
 		<Nullable>disable</Nullable>
-		<ImplicitUsings>enable</ImplicitUsings>
+		<ImplicitUsings>disable</ImplicitUsings>
+		<LangVersion>latest</LangVersion>
 		<RootNamespace>CheckupAddIn</RootNamespace>
-		<AssemblyName>CheckupAddIn</AssemblyName>
+		<AssemblyName>CheckupAddIn2025</AssemblyName>
 		<GenerateAssemblyInfo>true</GenerateAssemblyInfo>
 		<Version>0.13.0</Version>
 		<Author>Norman Lindner</Author>
-		<Description>Checkup for Autodesk Inventor 2026</Description>
+		<Description>Checkup 2025 for Autodesk Inventor 2025</Description>
 		<OutputPath>bin\</OutputPath>
 		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-		<AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
 	</PropertyGroup>
 
 	<ItemGroup>
+		<Reference Include="Microsoft.VisualBasic" />
+		<Reference Include="Microsoft.CSharp" />
 		<Reference Include="Autodesk.Inventor.Interop">
-			<HintPath>..\..\lib\2026\Autodesk.Inventor.Interop.dll</HintPath>
+			<HintPath>..\..\lib\2025\Autodesk.Inventor.Interop.dll</HintPath>
 			<EmbedInteropTypes>false</EmbedInteropTypes>
 			<Private>true</Private>
 		</Reference>
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="System.Drawing.Common" Version="8.0.0" />
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -38,7 +38,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<None Update="Autodesk.CheckupAddIn2026.addin">
+		<None Update="Autodesk.CheckupAddIn2025.addin">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
 		<None Update="Checkup_Settings.json">
@@ -52,7 +52,7 @@
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<TargetPath>Languages\Addin_Language_File_EN.json</TargetPath>
 		</None>
-<None Update="Checkup_Catalogs.json">
+		<None Update="Checkup_Catalogs.json">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 		<None Update="Checkup_Capabilities.json">
@@ -74,15 +74,6 @@
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<TargetPath>Catalogs\Demo.catalog.json</TargetPath>
 		</None>
-		<None Include="Bereinigen IDW+IPT+IAM.iLogicVb" />
 	</ItemGroup>
-
-	<!-- Create empty Catalogs\ and Capabilities\ subfolders in the output directory.
-	     Condition prevents touching existing directories (MakeDir is already idempotent,
-	     but the explicit Condition makes the intent clear). -->
-	<Target Name="CreateDevSubfolders" AfterTargets="Build">
-		<MakeDir Directories="$(OutputPath)Catalogs"      Condition="!Exists('$(OutputPath)Catalogs')"/>
-		<MakeDir Directories="$(OutputPath)Capabilities"  Condition="!Exists('$(OutputPath)Capabilities')"/>
-	</Target>
 
 </Project>

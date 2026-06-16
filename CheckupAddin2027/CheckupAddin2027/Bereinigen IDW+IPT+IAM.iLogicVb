@@ -1,0 +1,677 @@
+﻿' Bereinigen IDW+IPT+IAM
+' Stand: 2026-05-08
+'
+' Bereinigt Stile in IDW-, IPT- (inkl. Blech) und IAM-Dokumenten.
+' Bei IDW wird zusätzlich:
+'   - Rahmen, Schriftfeld und Skizzensymbole aus der Vorlagedatei kopiert
+'   - Veraltete Skizzensymbol-Definitionen und ihre Instanzen gelöscht
+'   - Maßtext-Ausrichtung auf "zentriert" gesetzt
+'
+' Entspricht der "Stile Bereinigen"-Funktion des CheckupAddin2027 (StylePurger.cs).
+' Bei Änderungen an StylePurger.cs muss dieses Skript synchron gehalten werden.
+'
+' Bekannte Einschränkung: "Standard"- und "Objektstandards"-Stile sind über die
+' öffentliche COM-API auf IPT/IAM nicht zugänglich und werden daher nicht aktualisiert.
+' Inventor selbst greift dafür auf internen C++-Code zu, der nicht für Skripte freigegeben ist.
+
+Sub Main()
+    ' ═══════════════════════════════════════════════════════════════════════
+    '  KONFIGURATION — hier bei Bedarf anpassen
+    ' ═══════════════════════════════════════════════════════════════════════
+
+    Dim templateFilePath As String = "V:\CAD\INV\Templates\Standard.idw"
+
+    Dim borderDefinitions As String() = New String() {
+        "A4 IZ-Rahmen",
+        "A3 IZ-Rahmen",
+        "A2 IZ-Rahmen",
+        "A1 IZ-Rahmen",
+        "A0 IZ-Rahmen"
+    }
+
+    Dim titleBlockDefinitions As String() = New String() {
+        "IZ_Teil",
+        "IZ_Auftrag",
+        "IZ_Auftrag Englisch"
+    }
+
+    Dim sketchedSymbolsToCopy As String() = New String() {
+        "Blechstil",
+        "Schliffrichtung"
+    }
+
+    Dim sketchedSymbolsToDelete As String() = New String() {
+        "Abwicklung V170",
+        "Abwicklung BVA",
+        "Kopie von Schliffrichtung",
+        "Kopie von Blechstil",
+        "Sichtseite",
+        "Sichtseite 2",
+        "Schweißzeichnung",
+        "Abwicklung-Skizz. Symbole",
+        "Eckbereich komplett verschweißen",
+        "Aussehen der Schweißnaht...",
+        "Feder re",
+        "Feder li",
+        "Bohrungen abkleben",
+        "einkleben mit...."
+    }
+
+    ' ═══════════════════════════════════════════════════════════════════════
+
+    Dim stopWatch As New Stopwatch()
+    stopWatch.Start()
+
+    Dim doc As Document = ThisApplication.ActiveDocument
+    If doc Is Nothing Then
+        MsgBox("Kein aktives Dokument.", vbOKOnly + vbExclamation, "Bereinigen")
+        Exit Sub
+    End If
+
+    Dim result As String
+    Select Case doc.DocumentType
+        Case DocumentTypeEnum.kDrawingDocumentObject
+            Dim drawDoc As DrawingDocument = doc
+            result = PurgeDrawing(drawDoc, templateFilePath, borderDefinitions, titleBlockDefinitions, sketchedSymbolsToCopy, sketchedSymbolsToDelete)
+        Case DocumentTypeEnum.kPartDocumentObject
+            Dim partDoc As PartDocument = doc
+            result = PurgePart(partDoc)
+        Case DocumentTypeEnum.kAssemblyDocumentObject
+            Dim asmDoc As AssemblyDocument = doc
+            result = PurgeAssembly(asmDoc)
+        Case Else
+            result = "Dokumententyp wird nicht unterstützt."
+    End Select
+
+    stopWatch.Stop()
+    Dim ts As TimeSpan = stopWatch.Elapsed
+    Dim elapsedTime As String = String.Format("{0:00}:{1:00}", ts.Seconds, ts.Milliseconds / 10)
+    Logger.Info("Bereinigen fertig – " & result & " – Laufzeit " & elapsedTime & " (Sekunden:Millisekunden)", filename)
+    iLogicVb.UpdateWhenDone = True
+End Sub
+
+
+' ═══════════════════════════════════════════════════════════════════════════
+'  IDW
+' ═══════════════════════════════════════════════════════════════════════════
+
+Function PurgeDrawing(doc As DrawingDocument, templateFilePath As String, borderDefinitions As String(), titleBlockDefinitions As String(), sketchedSymbolsToCopy As String(), sketchedSymbolsToDelete As String()) As String
+    Dim warnings As New List(Of String)
+
+    ' 1. Erste Runde: alle nicht-Bibliotheks-Stile aktualisieren
+    Dim styleSnapshot As New List(Of Style)
+    For Each st As Style In doc.StylesManager.Styles
+        styleSnapshot.Add(st)
+    Next
+    For Each st As Style In styleSnapshot
+        If st.StyleLocation = StyleLocationEnum.kLibraryStyleLocation Then Continue For
+        If Not st.UpToDate Then
+            Try
+                st.UpdateFromGlobal()
+            Catch
+            End Try
+        End If
+    Next
+
+    ' 2. Rahmen / Schriftfelder / Skizzensymbole aus Vorlagedatei kopieren
+    If Not String.IsNullOrWhiteSpace(templateFilePath) Then
+        Try
+            CopyFromTemplate(doc, warnings, templateFilePath, borderDefinitions, titleBlockDefinitions, sketchedSymbolsToCopy)
+        Catch ex As Exception
+            warnings.Add("Vorlage-Import abgebrochen: " & ex.Message)
+        End Try
+    End If
+
+    ' 3. Veraltete Skizzensymbol-Instanzen und -Definitionen löschen
+    For Each symbolName As String In sketchedSymbolsToDelete
+        Dim symDef As SketchedSymbolDefinition = Nothing
+        Try
+            symDef = doc.SketchedSymbolDefinitions.Item(symbolName)
+        Catch
+            Continue For
+        End Try
+        For Each sheet As Sheet In doc.Sheets
+            Dim toDelete As New List(Of SketchedSymbol)
+            For Each sym As SketchedSymbol In sheet.SketchedSymbols
+                If sym.Definition.Name = symbolName Then
+                    toDelete.Add(sym)
+                End If
+            Next
+            For Each sym As SketchedSymbol In toDelete
+                Try
+                    sym.Delete()
+                Catch
+                End Try
+            Next
+        Next
+        Try
+            symDef.Delete()
+        Catch
+        End Try
+    Next
+
+    ' 4. Maßtext-Ausrichtung auf "zentriert beibehalten" setzen
+    Try
+        doc.DrawingSettings.DimensionTextAlignment = DimensionTextAlignmentEnum.kMaintainCenteredTextAlignment
+    Catch
+    End Try
+
+    ' 5. Schleife: nicht aktuelle Stile aktualisieren + unbenutzte löschen, bis stabil
+    Dim changed As Boolean
+    Dim loopPass As Integer = 0
+    Do
+        changed = False
+        Dim snapshot2 As New List(Of Style)
+        For Each st As Style In doc.StylesManager.Styles
+            snapshot2.Add(st)
+        Next
+        For Each st As Style In snapshot2
+            If st.StyleLocation = StyleLocationEnum.kLibraryStyleLocation Then Continue For
+            If Not st.InUse Then
+                Try
+                    st.Delete()
+                    changed = True
+                Catch
+                End Try
+            ElseIf Not st.UpToDate Then
+                Try
+                    st.UpdateFromGlobal()
+                    changed = True
+                Catch
+                End Try
+            End If
+        Next
+        loopPass += 1
+    Loop While changed
+
+    If doc.RequiresUpdate Then
+        Try
+            doc.Update2(True)
+        Catch
+        End Try
+    End If
+
+    Dim sb As New System.Text.StringBuilder("IDW Stile bereinigt – " & DateTime.Now.ToString("HH:mm:ss"))
+    For Each w As String In warnings
+        sb.Append("  ⚠ " & w)
+    Next
+    Return sb.ToString()
+End Function
+
+
+Sub CopyFromTemplate(target As DrawingDocument, warnings As List(Of String), templateFilePath As String, borderDefinitions As String(), titleBlockDefinitions As String(), sketchedSymbolsToCopy As String())
+    If Not System.IO.File.Exists(templateFilePath) Then
+        warnings.Add("Vorlagedatei nicht gefunden: " & templateFilePath)
+        Exit Sub
+    End If
+
+    Dim source As DrawingDocument = Nothing
+    Try
+        source = ThisApplication.Documents.Open(templateFilePath, False)
+
+        For Each name As String In borderDefinitions
+            Try
+                source.BorderDefinitions.Item(name).CopyTo(target, True)
+            Catch
+                warnings.Add("Rahmen nicht in Vorlage oder kopieren fehlgeschlagen: " & name)
+            End Try
+        Next
+
+        For Each name As String In titleBlockDefinitions
+            Try
+                source.TitleBlockDefinitions.Item(name).CopyTo(target, True)
+            Catch
+                warnings.Add("Schriftfeld nicht in Vorlage oder kopieren fehlgeschlagen: " & name)
+            End Try
+        Next
+
+        For Each name As String In sketchedSymbolsToCopy
+            Try
+                source.SketchedSymbolDefinitions.Item(name).CopyTo(target, True)
+            Catch
+                warnings.Add("Skizzensymbol nicht in Vorlage oder kopieren fehlgeschlagen: " & name)
+            End Try
+        Next
+    Finally
+        Try
+            If source IsNot Nothing Then source.Close(False)
+        Catch
+        End Try
+    End Try
+End Sub
+
+
+' ═══════════════════════════════════════════════════════════════════════════
+'  IPT (regulär und Blech)
+' ═══════════════════════════════════════════════════════════════════════════
+
+Function PurgePart(doc As PartDocument) As String
+    Dim isSM As Boolean = TypeOf doc.ComponentDefinition Is SheetMetalComponentDefinition
+
+    ' Pre-pass: Inventor blocks UpdateFromGlobal() on active styles. Switch, update, restore.
+    UpdateActiveLightingStyle(doc)
+    UpdateActiveRenderStyle(doc)
+
+    If isSM Then
+        Dim sm As SheetMetalComponentDefinition = doc.ComponentDefinition
+        UpdateActiveSheetMetalStyle(sm)
+    End If
+
+    Const MaxPasses As Integer = 8
+    Dim pass As Integer
+    For pass = 0 To MaxPasses - 1
+        Dim anyChange As Boolean = False
+
+        anyChange = UpdateCollection(doc.LightingStyles) Or anyChange
+        anyChange = UpdateCollection(doc.TextStyles) Or anyChange
+        anyChange = UpdateCollection(doc.RenderStyles) Or anyChange
+
+        anyChange = PurgeCollection(doc.LightingStyles) Or anyChange
+        anyChange = PurgeCollection(doc.TextStyles) Or anyChange
+        Try
+            anyChange = PurgeAssets(doc.MaterialAssets) Or anyChange
+        Catch
+        End Try
+        Try
+            anyChange = PurgeAssets(doc.AppearanceAssets) Or anyChange
+        Catch
+        End Try
+
+        If isSM Then
+            Dim sm As SheetMetalComponentDefinition = doc.ComponentDefinition
+            anyChange = UpdateCollection(sm.SheetMetalStyles) Or anyChange
+            anyChange = UpdateCollection(sm.UnfoldMethods) Or anyChange
+            anyChange = PurgeCollection(sm.SheetMetalStyles) Or anyChange
+            anyChange = PurgeCollection(sm.UnfoldMethods) Or anyChange
+        End If
+
+        If Not anyChange Then Exit For
+    Next
+
+    Dim suffix As String = ""
+    If isSM Then suffix = " (Blech)"
+    Return "IPT Stile bereinigt" & suffix & " – " & DateTime.Now.ToString("HH:mm:ss")
+End Function
+
+
+' ═══════════════════════════════════════════════════════════════════════════
+'  IAM
+' ═══════════════════════════════════════════════════════════════════════════
+
+Function PurgeAssembly(doc As AssemblyDocument) As String
+    ' Pre-pass: Inventor blocks UpdateFromGlobal() on active styles. Switch, update, restore.
+    UpdateActiveLightingStyle(doc)
+    UpdateActiveRenderStyle(doc)
+
+    Const MaxPasses As Integer = 8
+    Dim pass As Integer
+    For pass = 0 To MaxPasses - 1
+        Dim anyChange As Boolean = False
+
+        anyChange = UpdateCollection(doc.LightingStyles) Or anyChange
+        anyChange = UpdateCollection(doc.TextStyles) Or anyChange
+        anyChange = UpdateCollection(doc.RenderStyles) Or anyChange
+        anyChange = UpdateCollection(doc.Materials) Or anyChange
+
+        anyChange = PurgeCollection(doc.LightingStyles) Or anyChange
+        anyChange = PurgeCollection(doc.TextStyles) Or anyChange
+        Try
+            anyChange = PurgeAssets(doc.MaterialAssets) Or anyChange
+        Catch
+        End Try
+        Try
+            anyChange = PurgeAssets(doc.AppearanceAssets) Or anyChange
+        Catch
+        End Try
+
+        If Not anyChange Then Exit For
+    Next
+
+    Return "IAM Stile bereinigt – " & DateTime.Now.ToString("HH:mm:ss")
+End Function
+
+
+' ═══════════════════════════════════════════════════════════════════════════
+'  Hilfsfunktionen
+' ═══════════════════════════════════════════════════════════════════════════
+
+' Inventor holds a lock on the active sheet metal style and silently ignores
+' UpdateFromGlobal() on it. Switch to another local style first, update all
+' SM styles and unfold methods (now unlocked), then restore the original.
+Sub UpdateActiveSheetMetalStyle(sm As SheetMetalComponentDefinition)
+    Dim originalName As String = Nothing
+    Try
+        If sm.ActiveSheetMetalStyle IsNot Nothing Then
+            originalName = sm.ActiveSheetMetalStyle.Name
+        End If
+    Catch
+        Exit Sub
+    End Try
+    If originalName Is Nothing Then Exit Sub
+
+    ' Find a non-active, non-library local style to use as temporary stand-in.
+    Dim tempStyle As Object = Nothing
+    Try
+        For Each style In sm.SheetMetalStyles
+            Try
+                Dim isLib As Boolean = False
+                Try
+                    isLib = (style.StyleLocation = StyleLocationEnum.kLibraryStyleLocation)
+                Catch
+                End Try
+                If Not isLib AndAlso style.Name <> originalName Then
+                    tempStyle = style
+                    Exit For
+                End If
+            Catch
+            End Try
+        Next
+    Catch
+    End Try
+
+    If tempStyle Is Nothing Then Exit Sub
+
+    Try
+        tempStyle.Activate()
+
+        ' Snapshot: UpdateFromGlobal() can invalidate the COM enumerator mid-loop.
+        Dim smSnapshot As New List(Of Object)
+        For Each style In sm.SheetMetalStyles
+            smSnapshot.Add(style)
+        Next
+        For Each style In smSnapshot
+            Try
+                If Not style.UpToDate Then
+                    Try
+                        style.UpdateFromGlobal()
+                    Catch
+                    End Try
+                End If
+            Catch
+            End Try
+        Next
+        Dim ufSnapshot As New List(Of Object)
+        For Each method In sm.UnfoldMethods
+            ufSnapshot.Add(method)
+        Next
+        For Each method In ufSnapshot
+            Try
+                If Not method.UpToDate Then
+                    Try
+                        method.UpdateFromGlobal()
+                    Catch
+                    End Try
+                End If
+            Catch
+            End Try
+        Next
+    Catch
+    Finally
+        ' Always restore the original active style, even if an update failed.
+        Try
+            For Each style In sm.SheetMetalStyles
+                Try
+                    If style.Name = originalName Then
+                        style.Activate()
+                        Exit For
+                    End If
+                Catch
+                End Try
+            Next
+        Catch
+        End Try
+    End Try
+End Sub
+
+
+' Inventor locks the active render style — same mechanism as LightingStyle and SheetMetalStyle.
+' Identify it by InUse=true, switch to another local style, update all, then restore.
+Sub UpdateActiveRenderStyle(doc As Object)
+    Dim originalName As String = Nothing
+    Try
+        For Each style In doc.RenderStyles
+            Try
+                Dim isLib As Boolean = False
+                Try
+                    isLib = (style.StyleLocation = StyleLocationEnum.kLibraryStyleLocation)
+                Catch
+                End Try
+                If Not isLib AndAlso style.InUse Then
+                    originalName = style.Name
+                    Exit For
+                End If
+            Catch
+            End Try
+        Next
+    Catch
+    End Try
+
+    If originalName Is Nothing Then Exit Sub
+
+    Dim tempStyle As Object = Nothing
+    Try
+        For Each style In doc.RenderStyles
+            Try
+                Dim isLib As Boolean = False
+                Try
+                    isLib = (style.StyleLocation = StyleLocationEnum.kLibraryStyleLocation)
+                Catch
+                End Try
+                If Not isLib AndAlso style.Name <> originalName Then
+                    tempStyle = style
+                    Exit For
+                End If
+            Catch
+            End Try
+        Next
+    Catch
+    End Try
+
+    If tempStyle Is Nothing Then Exit Sub
+
+    Try
+        tempStyle.Activate()
+        ' Snapshot: UpdateFromGlobal() can invalidate the COM enumerator mid-loop.
+        Dim snapshot As New List(Of Object)
+        For Each style In doc.RenderStyles
+            snapshot.Add(style)
+        Next
+        For Each style In snapshot
+            Try
+                If Not style.UpToDate Then
+                    Try
+                        style.UpdateFromGlobal()
+                    Catch
+                    End Try
+                End If
+            Catch
+            End Try
+        Next
+    Catch
+    Finally
+        Try
+            For Each style In doc.RenderStyles
+                Try
+                    If style.Name = originalName Then
+                        style.Activate()
+                        Exit For
+                    End If
+                Catch
+                End Try
+            Next
+        Catch
+        End Try
+    End Try
+End Sub
+
+
+' Inventor locks the active lighting style in the viewport — same mechanism as the SM style.
+' Identify it by InUse=true, switch to another local style, update all, then restore.
+Sub UpdateActiveLightingStyle(doc As Object)
+    Dim originalName As String = Nothing
+    Try
+        For Each style In doc.LightingStyles
+            Try
+                Dim isLib As Boolean = False
+                Try
+                    isLib = (style.StyleLocation = StyleLocationEnum.kLibraryStyleLocation)
+                Catch
+                End Try
+                If Not isLib AndAlso style.InUse Then
+                    originalName = style.Name
+                    Exit For
+                End If
+            Catch
+            End Try
+        Next
+    Catch
+    End Try
+
+    If originalName Is Nothing Then Exit Sub
+
+    Dim tempStyle As Object = Nothing
+    Try
+        For Each style In doc.LightingStyles
+            Try
+                Dim isLib As Boolean = False
+                Try
+                    isLib = (style.StyleLocation = StyleLocationEnum.kLibraryStyleLocation)
+                Catch
+                End Try
+                If Not isLib AndAlso style.Name <> originalName Then
+                    tempStyle = style
+                    Exit For
+                End If
+            Catch
+            End Try
+        Next
+    Catch
+    End Try
+
+    If tempStyle Is Nothing Then Exit Sub
+
+    Try
+        tempStyle.Activate()
+        ' Snapshot: UpdateFromGlobal() can invalidate the COM enumerator mid-loop.
+        Dim snapshot As New List(Of Object)
+        For Each style In doc.LightingStyles
+            snapshot.Add(style)
+        Next
+        For Each style In snapshot
+            Try
+                If Not style.UpToDate Then
+                    Try
+                        style.UpdateFromGlobal()
+                    Catch
+                    End Try
+                End If
+            Catch
+            End Try
+        Next
+    Catch
+    Finally
+        Try
+            For Each style In doc.LightingStyles
+                Try
+                    If style.Name = originalName Then
+                        style.Activate()
+                        Exit For
+                    End If
+                Catch
+                End Try
+            Next
+        Catch
+        End Try
+    End Try
+End Sub
+
+
+Function UpdateCollection(collection As Object) As Boolean
+    Dim updated As Boolean = False
+    Try
+        ' Snapshot first: UpdateFromGlobal() can invalidate the COM enumerator mid-loop.
+        Dim snapshot As New List(Of Object)
+        For Each s In collection
+            snapshot.Add(s)
+        Next
+        For Each s In snapshot
+            Try
+                If Not s.UpToDate Then
+                    Try
+                        s.UpdateFromGlobal()
+                        updated = True
+                    Catch
+                    End Try
+                End If
+            Catch
+            End Try
+        Next
+    Catch
+    End Try
+    Return updated
+End Function
+
+
+Function PurgeCollection(collection As Object) As Boolean
+    Dim anyDeleted As Boolean = False
+    Try
+        Dim deleted As Boolean
+        Do
+            deleted = False
+            Dim i As Integer = 1
+            Do While i <= collection.Count
+                Try
+                    Dim s = collection(i)
+                    Dim inUse As Boolean = s.InUse
+                    Dim isLib As Boolean = False
+                    Try
+                        isLib = (s.StyleLocation = StyleLocationEnum.kLibraryStyleLocation)
+                    Catch
+                    End Try
+                    If inUse Or isLib Then
+                        i += 1
+                    Else
+                        Try
+                            s.Delete()
+                            deleted = True
+                            anyDeleted = True
+                        Catch
+                            i += 1
+                        End Try
+                    End If
+                Catch
+                    i += 1
+                End Try
+            Loop
+        Loop While deleted
+    Catch
+    End Try
+    Return anyDeleted
+End Function
+
+
+Function PurgeAssets(collection As Object) As Boolean
+    Dim anyDeleted As Boolean = False
+    Try
+        Dim i As Integer = 1
+        Do While i <= collection.Count
+            Try
+                Dim asset = collection(i)
+                If asset.IsUsed Then
+                    i += 1
+                Else
+                    Try
+                        asset.Delete()
+                        anyDeleted = True
+                    Catch
+                        i += 1
+                    End Try
+                End If
+            Catch
+                i += 1
+            End Try
+        Loop
+    Catch
+    End Try
+    Return anyDeleted
+End Function

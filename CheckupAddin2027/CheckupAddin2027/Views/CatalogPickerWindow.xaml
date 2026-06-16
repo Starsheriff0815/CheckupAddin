@@ -1,0 +1,332 @@
+<Window x:Class="CheckupAddIn.Views.CatalogPickerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="{DynamicResource CatalogPicker_Title}"
+        Width="480" Height="520"
+        MinWidth="280" MinHeight="240"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="{DynamicResource CheckupWindowBackground}"
+        Foreground="{DynamicResource CheckupPrimaryText}"
+        FontFamily="Segoe UI" FontSize="12">
+
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/CheckupAddIn;component/Resources/DarkTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+
+            <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+            <!-- Button style (same as SpeziBaukastenPickerWindow) -->
+            <Style TargetType="Button">
+                <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                <Setter Property="VerticalContentAlignment"   Value="Center"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="border"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                  TextBlock.Foreground="{TemplateBinding Foreground}"
+                                                  Focusable="False"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="border" Property="Opacity" Value="0.8"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="border" Property="Opacity" Value="0.6"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="border" Property="Opacity" Value="0.4"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- ListBox style -->
+            <Style TargetType="ListBox">
+                <Setter Property="Background"   Value="{DynamicResource CheckupWindowBackground}"/>
+                <Setter Property="BorderBrush"  Value="{DynamicResource CheckupButtonBorder}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+                <Setter Property="ScrollViewer.VerticalScrollBarVisibility"   Value="Auto"/>
+            </Style>
+
+            <!-- ListBoxItem: stretch + hover -->
+            <Style TargetType="ListBoxItem">
+                <Setter Property="Foreground"                 Value="{DynamicResource CheckupPrimaryText}"/>
+                <Setter Property="Background"                 Value="Transparent"/>
+                <Setter Property="Padding"                    Value="4,2"/>
+                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ListBoxItem">
+                            <Border x:Name="border"
+                                    Background="{TemplateBinding Background}"
+                                    Padding="{TemplateBinding Padding}">
+                                <ContentPresenter TextBlock.Foreground="{TemplateBinding Foreground}"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="border" Property="Background"
+                                            Value="{DynamicResource CheckupComboItemHoverBackground}"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- Checkbox: themed like Spezi picker -->
+            <Style TargetType="CheckBox">
+                <Setter Property="Foreground"          Value="{DynamicResource CheckupPrimaryText}"/>
+                <Setter Property="VerticalAlignment"   Value="Center"/>
+                <Setter Property="SnapsToDevicePixels" Value="True"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="CheckBox">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Border x:Name="CheckBoxBorder"
+                                        Width="14" Height="14"
+                                        VerticalAlignment="Center"
+                                        Background="{DynamicResource CheckupButtonBackground}"
+                                        BorderBrush="{DynamicResource CheckupButtonBorder}"
+                                        BorderThickness="1"
+                                        SnapsToDevicePixels="True">
+                                    <Path x:Name="CheckMark"
+                                          Data="M 2 7 L 5 10 L 12 2"
+                                          Stroke="{DynamicResource CheckupButtonForeground}"
+                                          StrokeThickness="1.5"
+                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                          Stretch="Uniform" Margin="2"
+                                          Visibility="Collapsed"/>
+                                </Border>
+                                <ContentPresenter Margin="5,0,0,0"
+                                                  VerticalAlignment="Center"
+                                                  TextBlock.Foreground="{TemplateBinding Foreground}"/>
+                            </StackPanel>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="CheckMark"      Property="Visibility"  Value="Visible"/>
+                                    <Setter TargetName="CheckBoxBorder" Property="Background"  Value="{DynamicResource CheckupApplyButtonBackground}"/>
+                                    <Setter TargetName="CheckBoxBorder" Property="BorderBrush" Value="{DynamicResource CheckupDragHighlight}"/>
+                                </Trigger>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="CheckBoxBorder" Property="BorderBrush" Value="{DynamicResource CheckupDragHighlight}"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Opacity" Value="0.45"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- Group header: flat, non-collapsible -->
+            <DataTemplate x:Key="GroupHeaderTemplate">
+                <Border Background="{DynamicResource CheckupGroupHeaderBackground}" Padding="6,2,4,2">
+                    <TextBlock Text="{Binding Name}"
+                               Foreground="{DynamicResource CheckupGroupHeaderForeground}"
+                               FontSize="10" FontWeight="SemiBold"/>
+                </Border>
+            </DataTemplate>
+
+            <Style x:Key="FlatGroupItemStyle" TargetType="GroupItem">
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="GroupItem">
+                            <StackPanel>
+                                <ContentPresenter/>
+                                <ItemsPresenter/>
+                            </StackPanel>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- Item template: checkbox + PRI bold + SEC secondary + extra display columns -->
+            <DataTemplate x:Key="PickerItemTemplate">
+                <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" Padding="4,0">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="{Binding PriValue}"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource CheckupPrimaryText}"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding SecValue}"
+                                   Foreground="{DynamicResource CheckupSecondaryText}"
+                                   Margin="10,0,0,0" FontSize="11"
+                                   VerticalAlignment="Center"/>
+                        <!-- Additional display-only columns (Display_N_Role) -->
+                        <ItemsControl ItemsSource="{Binding ExtraDisplayValues}"
+                                      Focusable="False">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}"
+                                               Foreground="{DynamicResource CheckupSecondaryText}"
+                                               Margin="10,0,0,0" FontSize="11"
+                                               VerticalAlignment="Center"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </CheckBox>
+            </DataTemplate>
+
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Grid x:Name="MainGrid" Margin="8">
+        <Grid.RowDefinitions>
+            <!-- Row 0: Tab strip (hidden when no tabs in catalog) -->
+            <RowDefinition Height="Auto"/>
+            <!-- Row 1: Search box -->
+            <RowDefinition Height="Auto"/>
+            <!-- Row 2: Item list -->
+            <RowDefinition Height="*"/>
+            <!-- Row 3: Selection preview -->
+            <RowDefinition Height="Auto"/>
+            <!-- Row 4: OK / Cancel -->
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- ═══ Row 0: Tab strip ═══ -->
+        <Border Grid.Row="0"
+                x:Name="TabRowBorder"
+                BorderBrush="{DynamicResource CheckupButtonBorder}"
+                BorderThickness="0,0,0,1"
+                Margin="0,0,0,6" Padding="0,0,0,4"
+                Visibility="Collapsed">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Disabled">
+                <ItemsControl x:Name="TabButtonsHost">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Content="{Binding Label}"
+                                    Tag="{Binding TabId}"
+                                    Height="28" MinWidth="60"
+                                    Padding="10,2" Margin="0,0,4,0"
+                                    BorderThickness="1"
+                                    BorderBrush="{DynamicResource CheckupButtonBorder}"
+                                    Foreground="{DynamicResource CheckupButtonForeground}"
+                                    Click="TabButton_Click">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                        <Setter Property="Background" Value="{DynamicResource CheckupTabInactiveBackground}"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                <Setter Property="Background" Value="{DynamicResource CheckupTabActiveBackground}"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Border>
+
+        <!-- ═══ Row 1: Search box ═══ -->
+        <Border Grid.Row="1"
+                BorderBrush="{DynamicResource CheckupButtonBorder}"
+                BorderThickness="0,0,0,1"
+                Margin="0,0,0,4" Padding="0,0,0,4">
+            <TextBox x:Name="SearchBox"
+                     Height="26"
+                     BorderThickness="1"
+                     BorderBrush="{DynamicResource CheckupButtonBorder}"
+                     Background="{DynamicResource CheckupComboItemBackground}"
+                     Foreground="{DynamicResource CheckupPrimaryText}"
+                     Padding="4,2"
+                     VerticalContentAlignment="Center"
+                     TextChanged="SearchBox_TextChanged"
+                     PreviewKeyDown="SearchBox_PreviewKeyDown"/>
+        </Border>
+
+        <!-- ═══ Row 2: Item list ═══ -->
+        <ListBox Grid.Row="2"
+                 x:Name="ItemList"
+                 ItemTemplate="{StaticResource PickerItemTemplate}"
+                 KeyboardNavigation.DirectionalNavigation="Cycle"
+                 PreviewKeyDown="ItemList_PreviewKeyDown">
+            <ListBox.GroupStyle>
+                <GroupStyle HeaderTemplate="{StaticResource GroupHeaderTemplate}"
+                            ContainerStyle="{StaticResource FlatGroupItemStyle}"/>
+            </ListBox.GroupStyle>
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                    <Setter Property="Padding"                    Value="4,2"/>
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                </Style>
+            </ListBox.ItemContainerStyle>
+        </ListBox>
+
+        <!-- ═══ Row 3: Selection preview ═══ -->
+        <Border Grid.Row="3"
+                x:Name="PreviewBorder"
+                BorderBrush="{DynamicResource CheckupButtonBorder}"
+                BorderThickness="1"
+                Margin="0,6,0,6" Padding="6,4"
+                Visibility="Collapsed">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0"
+                           Text="{DynamicResource CatalogPicker_Selection}"
+                           Foreground="{DynamicResource CheckupSecondaryText}"
+                           VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <TextBlock Grid.Column="1"
+                           x:Name="PreviewText"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource CheckupPrimaryText}"
+                           TextWrapping="Wrap"/>
+            </Grid>
+        </Border>
+
+        <!-- ═══ Row 4: OK / Cancel ═══ -->
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="BtnOk"
+                    Content="{DynamicResource Btn_Apply}"
+                    IsEnabled="False"
+                    Width="90" Height="28"
+                    Margin="0,0,8,0" Padding="8,2"
+                    Background="{DynamicResource CheckupApplyButtonBackground}"
+                    Foreground="{DynamicResource CheckupButtonForeground}"
+                    BorderBrush="{DynamicResource CheckupButtonBorder}"
+                    BorderThickness="1"
+                    Click="OK_Click"/>
+            <Button Content="{DynamicResource Btn_Cancel}"
+                    Width="90" Height="28"
+                    Padding="8,2"
+                    Background="{DynamicResource CheckupButtonBackground}"
+                    Foreground="{DynamicResource CheckupButtonForeground}"
+                    BorderBrush="{DynamicResource CheckupButtonBorder}"
+                    BorderThickness="1"
+                    IsCancel="True"
+                    Click="Cancel_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

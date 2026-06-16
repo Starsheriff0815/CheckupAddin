@@ -21,7 +21,7 @@
 		<Reference Include="Microsoft.VisualBasic" />
 		<Reference Include="Microsoft.CSharp" />
 		<Reference Include="Autodesk.Inventor.Interop">
-			<HintPath>..\..\lib\Autodesk.Inventor.Interop.dll</HintPath>
+			<HintPath>..\..\lib\2024\Autodesk.Inventor.Interop.dll</HintPath>
 			<EmbedInteropTypes>false</EmbedInteropTypes>
 			<Private>true</Private>
 		</Reference>
