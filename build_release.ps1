@@ -54,6 +54,29 @@ if (-not $msbuild) {
 }
 if (-not $msbuild) { throw 'MSBuild not found. Install Visual Studio or the Build Tools.' }
 
+# --- Locate 7-Zip (preferred archiver; falls back to Compress-Archive) ---------
+$sevenZip = @(
+    (Get-Command 7z.exe -ErrorAction SilentlyContinue).Source
+    "$env:ProgramFiles\7-Zip\7z.exe"
+    "${env:ProgramFiles(x86)}\7-Zip\7z.exe"
+) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+
+function New-Bundle {
+    param([string] $SourceDir, [string] $ZipPath)
+    if (Test-Path $ZipPath) { Remove-Item $ZipPath -Force }
+    if ($sevenZip) {
+        # Run from inside the staging dir so entries are stored at the zip root.
+        Push-Location $SourceDir
+        try {
+            & $sevenZip a -tzip -mx=9 -bso0 -bsp0 -- $ZipPath '*' | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "7-Zip failed for $ZipPath (exit $LASTEXITCODE)." }
+        } finally { Pop-Location }
+    } else {
+        Compress-Archive -Path (Join-Path $SourceDir '*') -DestinationPath $ZipPath -Force
+    }
+}
+Write-Host ("Archiver: {0}" -f ($(if ($sevenZip) { $sevenZip } else { 'Compress-Archive (built-in)' }))) -ForegroundColor Cyan
+
 # --- Default tag from the 2026 project version --------------------------------
 if (-not $Tag) {
     $csproj = Join-Path $root 'CheckupAddin2026\CheckupAddin2026\CheckupAddin2026.csproj'
@@ -115,7 +138,7 @@ foreach ($y in $Years) {
     }
 
     $zip = Join-Path $dist "CheckupAddin${y}_$Tag.zip"
-    Compress-Archive -Path "$pkg\*" -DestinationPath $zip -Force
+    New-Bundle -SourceDir $pkg -ZipPath $zip
     $zips += $zip
     Write-Host "  packaged -> $zip" -ForegroundColor Green
 }
