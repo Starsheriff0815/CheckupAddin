@@ -1678,10 +1678,10 @@ must then be approved centrally by an administrator.
 ### 7.5 Build
 
 ```
-msbuild CheckupAddin2026/CheckupAddin2026.csproj /p:Configuration=Debug /p:Platform=x64
+msbuild CheckupAddin2026/CheckupAddin2026/CheckupAddin2026.csproj /p:Configuration=Debug /p:Platform=x64
 ```
 
-Full MSBuild path required — `msbuild` is not on PATH. `dotnet build` does not work for COM-interop WPF projects.
+Full MSBuild path required — `msbuild` is not on PATH. `dotnet build` does not work for COM-interop WPF projects. Before first build, run `fetch_interop.ps1` to populate `lib\<year>\` with each variant's interop (gitignored, never committed). Release zips for all four variants are produced locally by `build_release.ps1` — there is no CI build (a hosted runner has no Inventor install).
 
 NuGet build failure (MSB4018): delete `obj\project.assets.json` + `obj\project.nuget.cache`; Clean Solution alone does not fix this.
 
