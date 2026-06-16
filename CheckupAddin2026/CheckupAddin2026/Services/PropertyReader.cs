@@ -320,14 +320,18 @@ namespace CheckupAddIn.Services
             try
             {
                 var up = parameters.UserParameters[paramName];
-                return FormatParameterValue(doc, Convert.ToDouble(up.Value), up.get_Units());
+                object val = up.Value;
+                if (val is string s) return string.IsNullOrEmpty(s) ? NotAvailable : s;
+                return FormatParameterValue(doc, Convert.ToDouble(val), up.get_Units());
             }
             catch { }
 
             try
             {
                 var mp = parameters.ModelParameters[paramName];
-                return FormatParameterValue(doc, Convert.ToDouble(mp.Value), mp.get_Units());
+                object val = mp.Value;
+                if (val is string s) return string.IsNullOrEmpty(s) ? NotAvailable : s;
+                return FormatParameterValue(doc, Convert.ToDouble(val), mp.get_Units());
             }
             catch { }
 
