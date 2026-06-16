@@ -874,8 +874,12 @@ namespace CheckupAddIn.Views
         private void BottomBar_SizeChanged(object sender, SizeChangedEventArgs e)
         {
             if (sender is not FrameworkElement fe || !(fe.ActualWidth > 0)) return;
-            fe.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            double needed = fe.DesiredSize.Width + 24
+            // Min-width must track only the fixed button row, never the status message above it.
+            // That TextBlock is NoWrap + ellipsis, so its natural (untruncated) width balloons when
+            // multiple objects are selected. Measuring the whole bar would ratchet MinWidth up to
+            // that text width and never release it, locking the window from shrinking until reopened.
+            BottomButtonsRow.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            double needed = BottomButtonsRow.DesiredSize.Width + 24
                 + System.Windows.SystemParameters.ResizeFrameVerticalBorderWidth * 2;
             if (needed > MinWidth)
                 MinWidth = needed;

@@ -591,13 +591,17 @@
                    x:Name="BottomBar" SizeChanged="BottomBar_SizeChanged">
             <TextBlock DockPanel.Dock="Top"
                        Text="{Binding StatusMessage}"
+                       ToolTip="{Binding StatusMessage}"
                        FontSize="11" FontStyle="Italic"
                        Foreground="{DynamicResource CheckupSecondaryText}"
-                       Margin="0,0,0,6"/>
+                       Margin="0,0,0,6"
+                       Height="16"
+                       TextWrapping="NoWrap"
+                       TextTrimming="CharacterEllipsis"/>
             <Separator DockPanel.Dock="Top" Margin="0,0,0,6"
                        Background="{DynamicResource CheckupSeparator}"/>
 
-            <DockPanel LastChildFill="True">
+            <DockPanel x:Name="BottomButtonsRow" LastChildFill="True">
 
                 <!-- Left: Purge Styles -->
                 <Button DockPanel.Dock="Left" Style="{StaticResource BarBtn}"
