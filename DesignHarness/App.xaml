@@ -1,0 +1,4 @@
+<Application x:Class="CheckupAddIn.DesignHarness.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             StartupUri="HarnessWindow.xaml" />

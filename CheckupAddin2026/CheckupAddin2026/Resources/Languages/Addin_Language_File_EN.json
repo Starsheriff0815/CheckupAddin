@@ -290,10 +290,11 @@
   "Info_Main_Intro":      "Select an object (IPT / IAM) → values refresh automatically on document or selection change.",
   "Info_Main_Edit":       "Click a value → edit in-place → OK.",
   "Info_Main_Formula":    "ƒx button → the value comes from an Inventor formula (iProperty expression or parameter equation); press ƒx to reveal and edit the equation behind it.",
-  "Info_Main_RightClick": "Right-click a value field → copy to clipboard.",
+  "Info_Main_RightClick": "Right-click a value field → copy to clipboard.\nHover over a value field → full value as tooltip.",
   "Info_Main_Drag":       "Drag rows to reorder.",
   "Info_Main_Preset":     "Right-click a preset button → save, import, or export the current layout.",
   "Info_Main_Refresh":    "Available values refresh automatically on document switch, even when only an IPT or IDW is open.",
+  "Info_Main_Header":     "Header shows the file name of the read document. With a multi-selection all names are listed (text in red). Repeated instances show a counter, e.g. Bolt_M8.ipt (6).\n⇄ button on the left (or click the file name) cycles the display modes:\n• Plain — name + count\n• Compact — name + count + IAM count (e.g. 6, 2 IAM)\n• Detailed — grouped by parent sub-assembly\nThe chosen mode is remembered across sessions. Hover shows the full text.",
 
   "Info_Roles_Title":          "Column Roles — Overview",
   "Info_Roles_None":           "No special function.\nUse for helper columns, internal keys, or free-text fields.",

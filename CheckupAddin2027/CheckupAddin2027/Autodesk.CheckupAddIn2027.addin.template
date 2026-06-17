@@ -32,5 +32,6 @@
 	<UserUnloadable>1</UserUnloadable>
 
 	<SupportedSoftwareVersionGreaterThan>30..</SupportedSoftwareVersionGreaterThan>
+	<SupportedSoftwareVersionLessThan>32..</SupportedSoftwareVersionLessThan>
 
 </Addin>

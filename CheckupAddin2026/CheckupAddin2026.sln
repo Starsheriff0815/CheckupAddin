@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.14.37111.16 d17.14
+# Visual Studio Version 18
+VisualStudioVersion = 18.7.11903.348 stable
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CheckupAddin2026", "CheckupAddin2026\CheckupAddin2026.csproj", "{53FABCC3-E5DF-558C-A950-3494BC432E9F}"
 EndProject
@@ -21,5 +21,8 @@ Global
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {E15125E4-BAA3-4C21-AF82-1F803D6E5426}
+	EndGlobalSection
+	GlobalSection(SharedMSBuildProjectFiles) = preSolution
+		..\CheckupAddin.Shared\CheckupAddin.Shared.projitems*{53fabcc3-e5df-558c-a950-3494bc432e9f}*SharedItemsImports = 5
 	EndGlobalSection
 EndGlobal

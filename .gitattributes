@@ -1,0 +1,11 @@
+# Normalize line endings. Git stores text as LF and checks out native on Windows.
+# Prerequisite for cross-variant file linking (avoids CRLF/LF diff noise). See
+# project_cross_variant_linking memory. Not force-renormalized yet — applies going forward.
+* text=auto
+
+# Binary assets — never normalize
+*.png  binary
+*.gif  binary
+*.ico  binary
+*.dll  binary
+*.bundle binary

@@ -8,14 +8,16 @@
 		<ImplicitUsings>disable</ImplicitUsings>
 		<LangVersion>latest</LangVersion>
 		<RootNamespace>CheckupAddIn</RootNamespace>
-		<AssemblyName>CheckupAddIn2024</AssemblyName>
+		<AssemblyName>CheckupAddIn</AssemblyName>
 		<GenerateAssemblyInfo>true</GenerateAssemblyInfo>
-		<Version>0.13.1</Version>
+		<Version>0.13.2</Version>
 		<Author>Norman Lindner</Author>
 		<Description>Checkup 2024 for Autodesk Inventor 2024</Description>
 		<OutputPath>bin\</OutputPath>
 		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
 	</PropertyGroup>
+
+	<Import Project="..\..\CheckupAddin.Shared\CheckupAddin.Shared.projitems" Label="Shared" />
 
 	<ItemGroup>
 		<Reference Include="Microsoft.VisualBasic" />
@@ -38,17 +40,28 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<Page Include="..\..\CheckupAddin2026\CheckupAddin2026\Resources\DarkTheme.xaml">
+			<Link>Resources\DarkTheme.xaml</Link>
+		</Page>
+		<Page Include="..\..\CheckupAddin2026\CheckupAddin2026\Resources\LightTheme.xaml">
+			<Link>Resources\LightTheme.xaml</Link>
+		</Page>
+	</ItemGroup>
+
+	<ItemGroup>
 		<None Update="Autodesk.CheckupAddIn2024.addin">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
 		<None Update="Checkup_Settings.json">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
-		<None Update="Resources\Languages\Addin_Language_File_DE.json">
+		<None Include="..\..\CheckupAddin2026\CheckupAddin2026\Resources\Languages\Addin_Language_File_DE.json">
+			<Link>Resources\Languages\Addin_Language_File_DE.json</Link>
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<TargetPath>Languages\Addin_Language_File_DE.json</TargetPath>
 		</None>
-		<None Update="Resources\Languages\Addin_Language_File_EN.json">
+		<None Include="..\..\CheckupAddin2026\CheckupAddin2026\Resources\Languages\Addin_Language_File_EN.json">
+			<Link>Resources\Languages\Addin_Language_File_EN.json</Link>
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<TargetPath>Languages\Addin_Language_File_EN.json</TargetPath>
 		</None>

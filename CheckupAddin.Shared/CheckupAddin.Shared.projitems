@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <MSBuildAllProjects>$(MSBuildAllProjects);$(MSBuildThisFileFullPath)</MSBuildAllProjects>
+    <HasSharedItems>true</HasSharedItems>
+    <SharedGUID>{5E7A4B3C-1F2E-4A5B-9C6D-E3F4A1B2C3D4}</SharedGUID>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <Compile>
+      <AutoGen>False</AutoGen>
+    </Compile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <!-- Shared global usings (NET48 compat bridge) -->
+    <Compile Include="$(MSBuildThisFileDirectory)SharedGlobalUsings.cs" />
+
+    <!-- NET48 polyfills for C# 9 init setters and C# 8 range/index expressions -->
+    <Compile Include="$(MSBuildThisFileDirectory)IsExternalInitPolyfill.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)RangeIndexPolyfill.cs" />
+
+    <!-- Assembly-level attributes -->
+    <Compile Include="$(MSBuildThisFileDirectory)InternalsVisibleTo.cs" />
+
+    <!-- Converters -->
+    <Compile Include="$(MSBuildThisFileDirectory)Converters\CardTypeToBrushConverter.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Converters\GroupNameConverter.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Converters\StringEqualityConverter.cs" />
+
+    <!-- Helpers -->
+    <Compile Include="$(MSBuildThisFileDirectory)Helpers\BindingProxy.cs" />
+
+    <!-- Models -->
+    <Compile Include="$(MSBuildThisFileDirectory)Models\CapabilityData.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\CatalogData.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\CatalogDropdownItem.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\FieldItem.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\FieldSelectorGroupVm.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\LogicDropdownColumn.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\LogicDropdownItemRow.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\PinnedFieldEntry.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\PresetData.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\RowModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\SpeziAutoCompleteItem.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\SpeziSegment.cs" />
+
+    <!-- Services -->
+    <Compile Include="$(MSBuildThisFileDirectory)Services\CapabilityStore.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\CardEngine.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\CatalogStore.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\DiagLogger.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\DocumentResolver.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\FieldCatalogBuilder.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\FieldWriter.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\FormulaEngine.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\InfoPanelBuilder.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\LanguageLoader.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\PerfLogger.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\PresetsManager.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\PropertyReader.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\StylePurger.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\ThemeLoader.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\UiStateStore.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\UserSettings.cs" />
+
+    <!-- ViewModels -->
+    <Compile Include="$(MSBuildThisFileDirectory)ViewModels\CatalogBuilderViewModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ViewModels\CheckupViewModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ViewModels\RelayCommand.cs" />
+
+    <!-- Views — XAML pages + code-behind -->
+    <Page Include="$(MSBuildThisFileDirectory)Views\CatalogBuilderWindow.xaml">
+      <Link>Views\CatalogBuilderWindow.xaml</Link>
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Compile Include="$(MSBuildThisFileDirectory)Views\CatalogBuilderWindow.xaml.cs">
+      <DependentUpon>CatalogBuilderWindow.xaml</DependentUpon>
+    </Compile>
+
+    <Page Include="$(MSBuildThisFileDirectory)Views\CatalogPickerWindow.xaml">
+      <Link>Views\CatalogPickerWindow.xaml</Link>
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Compile Include="$(MSBuildThisFileDirectory)Views\CatalogPickerWindow.xaml.cs">
+      <DependentUpon>CatalogPickerWindow.xaml</DependentUpon>
+    </Compile>
+
+    <Page Include="$(MSBuildThisFileDirectory)Views\CheckupWindow.xaml">
+      <Link>Views\CheckupWindow.xaml</Link>
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Compile Include="$(MSBuildThisFileDirectory)Views\CheckupWindow.xaml.cs">
+      <DependentUpon>CheckupWindow.xaml</DependentUpon>
+    </Compile>
+
+    <Page Include="$(MSBuildThisFileDirectory)Views\InfoDialog.xaml">
+      <Link>Views\InfoDialog.xaml</Link>
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Compile Include="$(MSBuildThisFileDirectory)Views\InfoDialog.xaml.cs">
+      <DependentUpon>InfoDialog.xaml</DependentUpon>
+    </Compile>
+
+    <Page Include="$(MSBuildThisFileDirectory)Views\InputDialog.xaml">
+      <Link>Views\InputDialog.xaml</Link>
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Compile Include="$(MSBuildThisFileDirectory)Views\InputDialog.xaml.cs">
+      <DependentUpon>InputDialog.xaml</DependentUpon>
+    </Compile>
+
+    <Page Include="$(MSBuildThisFileDirectory)Views\PresetPickerDialog.xaml">
+      <Link>Views\PresetPickerDialog.xaml</Link>
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Compile Include="$(MSBuildThisFileDirectory)Views\PresetPickerDialog.xaml.cs">
+      <DependentUpon>PresetPickerDialog.xaml</DependentUpon>
+    </Compile>
+  </ItemGroup>
+</Project>

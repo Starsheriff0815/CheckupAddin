@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/CheckupAddin2026/">
+    <Project Path="CheckupAddin2026/CheckupAddin2026/CheckupAddin2026.csproj" />
+  </Folder>
+  <Project Path="DesignHarness/DesignHarness.csproj" />
+</Solution>

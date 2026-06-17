@@ -49,6 +49,7 @@ Go to the [Releases](../../releases) page and download the latest release zip fo
 - `CheckupAddin2025_vX.X.X.zip` for Inventor 2025
 - `CheckupAddin2026_vX.X.X.zip` for Inventor 2026
 - `CheckupAddin2027_vX.X.X.zip` for Inventor 2027
+- `CheckupDesignHarness_vX.X.X.zip` — optional standalone tool to customize the add-in's visual appearance without running Inventor (see [DesignHarness](#designharness--visual-customization-tool) below)
 
 ### 2. Unpack
 
@@ -165,14 +166,42 @@ Build output is placed in `CheckupAddin<year>\CheckupAddin<year>\bin\`.
 
 ### Building the release bundles
 
-`build_release.ps1` builds, packages, and (optionally) publishes the release zips for all variants. It uses 7-Zip if installed, otherwise PowerShell's `Compress-Archive`:
+`build_release.ps1` builds, packages, and (optionally) publishes the release zips for all four add-in variants and the DesignHarness. It uses 7-Zip if installed, otherwise PowerShell's `Compress-Archive`:
 
 ```
-pwsh ./build_release.ps1                          # build + zip all variants into dist\
+pwsh ./build_release.ps1                           # build + zip all variants + DesignHarness into dist\
 pwsh ./build_release.ps1 -Tag v0.13.0 -Publish    # also create the GitHub release via gh
+pwsh ./build_release.ps1 -SkipHarness             # add-in variants only, skip DesignHarness
 ```
 
 Releases are built **locally** — there is no CI build, because a hosted runner has no Inventor install to reference the interop from.
+
+---
+
+## DesignHarness — Visual Customization Tool
+
+The DesignHarness is a standalone WPF application for previewing and adjusting the add-in's visual appearance — colors, fonts, labels, and window sizes — **without opening Inventor**.
+
+**Who it is for:** Anyone who cloned the repo and wants to customize how the add-in looks. Edits made in the harness are exported back to the source XAML and JSON files so they can be committed and rebuilt.
+
+**Requirements:**
+- .NET 8 Desktop Runtime (x64)
+- `Autodesk.Inventor.Interop.dll` from your **Inventor 2026** install — copy it next to the exe before running (same requirement as the Inventor 2026 add-in bundle; not shipped in the zip)
+
+**Running from the release zip:**
+1. Download `CheckupDesignHarness_vX.X.X.zip` from the [Releases](../../releases) page and extract it to any folder.
+2. Copy `Autodesk.Inventor.Interop.dll` from `C:\Program Files\Autodesk\Inventor 2026\Bin\Public Assemblies\` into that folder.
+3. Run `CheckupAddIn.DesignHarness.exe`.
+
+**Building from source:**
+
+The harness lives in `DesignHarness\` and is built automatically by `build_release.ps1`. To build it on its own (after running `fetch_interop.ps1` to populate `lib\2026\`):
+
+```
+msbuild DesignHarness\DesignHarness.csproj /p:Configuration=Release /p:Platform=x64
+```
+
+Output: `DesignHarness\bin\CheckupAddIn.DesignHarness.exe`
 
 ---
 

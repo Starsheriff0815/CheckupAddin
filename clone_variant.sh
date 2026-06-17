@@ -2,6 +2,12 @@
 set -euo pipefail
 
 # Usage: clone_variant.sh <SRC_YEAR> <DST_YEAR> <OLD_GUID> <NEW_GUID> <OLD_SLNPROJ> <NEW_SLNPROJ> <OLD_SLNSOL> <NEW_SLNSOL> <SUPPORTED_VER>
+#
+# Since Task #37 (Shared Project restructure), variant folders are thin head projects.
+# Common code lives in CheckupAddin.Shared/ (referenced via ..\..\CheckupAddin.Shared\).
+# This script clones the thin head project; the relative shared-project path is identical
+# in any sibling variant folder, so no path fixup is needed after cloning.
+# After cloning: update AppConstants.cs in the new head project with the new year strings.
 SRC="$1"; DST="$2"; OLD_GUID="$3"; NEW_GUID="$4"
 OLD_SLNPROJ="$5"; NEW_SLNPROJ="$6"; OLD_SLNSOL="$7"; NEW_SLNSOL="$8"; SUPP="$9"
 

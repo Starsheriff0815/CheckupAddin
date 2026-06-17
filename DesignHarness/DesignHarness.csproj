@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Design Harness (Task #36) — a build-time DESIGNER tool.
+    Standalone WPF app that launches the add-in's windows with the dummy
+    (parameterless) CheckupViewModel so visuals can be tuned WITHOUT Inventor.
+    Targets the 2026/net8 variant (XAML is shared across all four variants).
+    Shipped as CheckupDesignHarness_<Tag>.zip alongside the four add-in bundles.
+    Requires: .NET 8 Desktop Runtime (x64) + Autodesk.Inventor.Interop.dll from
+    the Inventor 2026 install (gitignored — copy from Inventor 2026 Bin\Public Assemblies\).
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>CheckupAddIn.DesignHarness</RootNamespace>
+    <AssemblyName>CheckupAddIn.DesignHarness</AssemblyName>
+    <OutputPath>bin\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Reuses the add-in's real windows, themes, and dummy view-models. -->
+    <ProjectReference Include="..\CheckupAddin2026\CheckupAddin2026\CheckupAddin2026.csproj" />
+    <!-- Needed only so the compiler can resolve Inventor.Application params in some window
+         ctors/Initialize signatures (we pass null). The DLL is already copied to output by the
+         project reference above, so Private=false avoids a duplicate copy. -->
+    <Reference Include="Autodesk.Inventor.Interop">
+      <HintPath>..\lib\2026\Autodesk.Inventor.Interop.dll</HintPath>
+      <EmbedInteropTypes>false</EmbedInteropTypes>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

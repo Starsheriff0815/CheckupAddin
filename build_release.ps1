@@ -1,9 +1,7 @@
 <#
 .SYNOPSIS
-  Builds, packages, and (optionally) publishes the CheckupAddin release bundles
-  for each Inventor year variant. Run locally on a machine that has the matching
-  Inventor versions installed (the interop PIA is gitignored and supplied from
-  each local install -- run fetch_interop.ps1 first if lib\<year>\ is empty).
+  Builds, packages, and (optionally) publishes CheckupAddin release bundles
+  (all four Inventor year variants + the DesignHarness tool).
 
 .DESCRIPTION
   Replaces the former GitHub Actions auto-build: windows-latest has no Inventor,
@@ -11,31 +9,43 @@
     1. msbuild Restore + Build (Release, x64)
     2. Stages the deployable files into dist\release_<year>\
     3. Zips it to dist\CheckupAddin<year>_<Tag>.zip
-  With -Publish it then creates the GitHub Release and uploads the zips via gh.
+  Then builds the DesignHarness (unless -SkipHarness) into dist\CheckupDesignHarness_<Tag>.zip.
+  With -Publish it then creates the GitHub Release and uploads all zips via gh.
 
-  Packaging differs by framework:
-    net48  (2024, 2025): CheckupAddIn<year>.dll + Newtonsoft.Json.dll
+  Packaging by bundle type:
+    net48  (2024, 2025): CheckupAddIn.dll + Newtonsoft.Json.dll
     net8   (2026, 2027): CheckupAddIn.dll + .comhost.dll + .runtimeconfig.json
+    DesignHarness:       CheckupAddIn.DesignHarness.exe/.dll/.runtimeconfig.json
+                         + CheckupAddIn.dll + .comhost.dll (used by the harness)
+                         Requires: .NET 8 Desktop Runtime (x64) + Inventor 2026 interop DLL
+                         (interop is NOT shipped — user copies from their Inventor 2026 install)
 
 .PARAMETER Tag
   Release tag used in the zip names and (with -Publish) the GitHub release.
   Defaults to "v" + the <Version> read from the 2026 csproj.
 
 .PARAMETER Years
-  Which variants to build. Default: 2024, 2025, 2026, 2027.
+  Which add-in variants to build. Default: 2024, 2025, 2026, 2027.
+
+.PARAMETER SkipHarness
+  Skip building and packaging the DesignHarness. Use when the 2026 interop is
+  unavailable or when building a partial release.
 
 .PARAMETER Publish
   After building, create the GitHub release for $Tag and upload the zips (gh CLI).
 
 .EXAMPLE
-  pwsh ./build_release.ps1                 # build + zip all four into dist\
+  pwsh ./build_release.ps1                          # build + zip all four variants + harness
 .EXAMPLE
-  pwsh ./build_release.ps1 -Tag v0.14.0 -Publish
+  pwsh ./build_release.ps1 -Tag v0.14.0 -Publish   # build, zip, and publish to GitHub
+.EXAMPLE
+  pwsh ./build_release.ps1 -SkipHarness            # variants only, no harness
 #>
 [CmdletBinding()]
 param(
     [string]   $Tag,
     [int[]]    $Years = @(2024, 2025, 2026, 2027),
+    [switch]   $SkipHarness,
     [switch]   $Publish,
     [string]   $Repo = 'Starsheriff0815/CheckupAddin'
 )
@@ -118,7 +128,7 @@ foreach ($y in $Years) {
         Copy-Item "$bin\CheckupAddIn.comhost.dll"        $pkg
         Copy-Item "$bin\CheckupAddIn.runtimeconfig.json" $pkg
     } else {
-        Copy-Item "$bin\CheckupAddIn$y.dll"              $pkg
+        Copy-Item "$bin\CheckupAddIn.dll"                 $pkg
         Copy-Item "$bin\Newtonsoft.Json.dll"             $pkg
     }
 
@@ -144,7 +154,41 @@ foreach ($y in $Years) {
     Write-Host "  packaged -> $zip" -ForegroundColor Green
 }
 
-if (-not $zips) { throw 'No bundles produced.' }
+if (-not $zips) { throw 'No add-in bundles produced.' }
+
+# --- Design Harness -------------------------------------------------------
+Write-Host "==================== DesignHarness ====================" -ForegroundColor Cyan
+$harnessProj    = Join-Path $root 'DesignHarness\DesignHarness.csproj'
+$harnessInterop = Join-Path $root 'lib\2026\Autodesk.Inventor.Interop.dll'
+
+if ($SkipHarness) {
+    Write-Host '  (skipped via -SkipHarness)' -ForegroundColor DarkGray
+} elseif (-not (Test-Path $harnessProj)) {
+    Write-Warning 'DesignHarness\DesignHarness.csproj not found — skipped.'
+} elseif (-not (Test-Path $harnessInterop)) {
+    Write-Warning 'lib\2026\Autodesk.Inventor.Interop.dll missing — DesignHarness skipped (run fetch_interop.ps1 first).'
+} else {
+    & $msbuild $harnessProj /t:Restore,Build /p:Configuration=Release /p:Platform=x64 `
+        /p:WarningLevel=0 /v:minimal /nologo
+    if ($LASTEXITCODE -ne 0) { throw 'DesignHarness build failed.' }
+
+    $hbin = Join-Path $root 'DesignHarness\bin'
+    $hpkg = Join-Path $dist 'release_DesignHarness'
+    New-Item -ItemType Directory $hpkg | Out-Null
+
+    # Copy all output EXCEPT the proprietary Inventor interop and debug symbols.
+    # Users must copy Autodesk.Inventor.Interop.dll from their Inventor 2026 install.
+    Get-ChildItem $hbin -File | Where-Object {
+        $_.Name -ne 'Autodesk.Inventor.Interop.dll' -and $_.Extension -ne '.pdb'
+    } | Copy-Item -Destination $hpkg
+
+    $hzip = Join-Path $dist "CheckupDesignHarness_$Tag.zip"
+    New-Bundle -SourceDir $hpkg -ZipPath $hzip
+    $zips += $hzip
+    Write-Host "  packaged -> $hzip" -ForegroundColor Green
+    Write-Host "  REMINDER: DesignHarness requires .NET 8 Desktop Runtime (x64) and" -ForegroundColor Yellow
+    Write-Host "            Autodesk.Inventor.Interop.dll from the Inventor 2026 install." -ForegroundColor Yellow
+}
 
 Write-Host "`nBundles in $dist :" -ForegroundColor Cyan
 $zips | ForEach-Object { Write-Host "  $_" }

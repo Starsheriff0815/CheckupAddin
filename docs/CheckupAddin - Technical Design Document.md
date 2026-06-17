@@ -1,8 +1,8 @@
 ﻿# CheckupAddin — Technical Design Document
 
-> **Scope:** Both projects — CheckupAddin2026 (.NET 8.0, Inventor 2026) and CheckupAddin2024 (.NET 4.8, Inventor 2024).
+> **Scope:** All four variants — CheckupAddin2024/2025 (.NET 4.8) and CheckupAddin2026/2027 (.NET 8.0).
 > **Author of this doc:** Starsheriff.
-> **Last updated:** 2026-06-06.
+> **Last updated:** 2026-06-17.
 
 ---
 
@@ -23,23 +23,25 @@
 
 ---
 
-## 2. Two Variants
+## 2. Four Variants
 
-| Property         | CheckupAddin2026                     | CheckupAddin2024                     |
-|------------------|--------------------------------------|--------------------------------------|
-| Target Inventor  | 2026 (API v29.x)                     | 2024 (API v28.x)                     |
-| Framework        | .NET 8.0, net8.0-windows             | .NET 4.8, net48                      |
-| Language version | C# 12 (latest)                       | C# latest (via LangVersion)          |
-| JSON library     | System.Text.Json                     | Newtonsoft.Json                      |
-| COM GUID         | D72E8C3A-5B1F-4E3A-9C6D-A1B2C3D4E5F6 | 4E7A2B9C-...                         |
-| ProgId           | CheckupAddIn.StandardAddInServer     | CheckupAddIn2024.StandardAddInServer |
-| Addin manifest   | Autodesk.CheckupAddIn2026.addin      | Autodesk.CheckupAddIn2024.addin      |
-| AppData folder   | %APPDATA%\\Checkup 2026\              | %APPDATA%\\Checkup 2024\              |
-| Registry key     | Software\\Checkup 2026                | Software\\Checkup 2024                |
-| Pack URI         | CheckupAddin2026;component/...       | CheckupAddIn2024;component/...       |
-| HWND source      | WindowInteropHelper                  | WindowInteropHelper                  |
+| Property         | CheckupAddin2024                      | CheckupAddin2025                      | CheckupAddin2026                       | CheckupAddin2027                       |
+|------------------|---------------------------------------|---------------------------------------|----------------------------------------|----------------------------------------|
+| Target Inventor  | 2024 (API v28.x)                      | 2025 (API v29.x)                      | 2026 (API v30.x)                       | 2027 (API v31.x)                       |
+| Framework        | .NET 4.8, net48                       | .NET 4.8, net48                       | .NET 8.0, net8.0-windows               | .NET 8.0, net8.0-windows               |
+| Language version | C# latest (via LangVersion)           | C# latest (via LangVersion)           | C# 12 (latest)                         | C# 12 (latest)                         |
+| JSON library     | Newtonsoft.Json                       | Newtonsoft.Json                       | System.Text.Json                       | System.Text.Json                       |
+| COM GUID         | 4E7A2B9C-...                          | (unique)                              | D72E8C3A-5B1F-4E3A-9C6D-A1B2C3D4E5F6  | (unique)                               |
+| AssemblyName     | CheckupAddIn                          | CheckupAddIn                          | CheckupAddIn                           | CheckupAddIn                           |
+| ProgId           | CheckupAddIn.StandardAddInServer      | CheckupAddIn.StandardAddInServer      | CheckupAddIn.StandardAddInServer       | CheckupAddIn.StandardAddInServer       |
+| Addin manifest   | Autodesk.CheckupAddIn2024.addin       | Autodesk.CheckupAddIn2025.addin       | Autodesk.CheckupAddIn2026.addin        | Autodesk.CheckupAddIn2027.addin        |
+| AppData folder   | %APPDATA%\\Checkup 2024\              | %APPDATA%\\Checkup 2025\              | %APPDATA%\\Checkup 2026\               | %APPDATA%\\Checkup 2027\               |
+| Registry key     | Software\\Checkup 2024                | Software\\Checkup 2025                | Software\\Checkup 2026                 | Software\\Checkup 2027                 |
+| Pack URI         | /CheckupAddIn;component/...           | /CheckupAddIn;component/...           | /CheckupAddIn;component/...            | /CheckupAddIn;component/...            |
 
-**Policy:** Every feature is implemented in both projects simultaneously unless the user explicitly says otherwise. Net48 porting rules applied automatically (see Section 7).
+**Policy:** Every feature is implemented in all four variants simultaneously unless the user explicitly says otherwise. All common code lives in `CheckupAddin.Shared/` (VS Shared Project) — see §7.8. Net48 porting rules apply to shared code compiled for 2024/2025 (see §7.1). New variants are cloned with `clone_variant.sh` (copies the thin head project; shared project import path is the same from any sibling folder). The interop DLL for each variant is fetched from the local Inventor install by `fetch_interop.ps1` (gitignored, never committed).
+
+**Canonical resource files:** `DarkTheme.xaml`, `LightTheme.xaml`, `Addin_Language_File_DE.json`, `Addin_Language_File_EN.json`, and (for net8) `Addin_Language_File_DE.xaml` live in the **2026 project only**. The other three variants reference these files via MSBuild `<Link>` items — no physical copies (see §7.6).
 
 ---
 
@@ -104,7 +106,7 @@ StandardAddInServer  →  CheckupWindow (View)
 | `LanguageLoader`        | Loads DE/EN JSON string files; applies to WPF DynamicResource system. Key prefixes: `Btn_` (buttons), `Field_` (field labels), `Tip_` (tooltips), `Lbl_` / `Msg_` (labels/messages), `CatBuilder_` (Catalog Editor UI), `CardType_` (card type names), `Cap_` (capability set UI), `Info_` (info dialog content), `Cycle_` (cycle/error display). Sources: (1) XAML resource dict — base fallback, designer-visible; (2) `Addin_Language_File_DE/EN.json` — overrides + long texts. JSON wins when a key exists in both. See §5.5 for full flow. |
 | `ThemeLoader`           | Detects Inventor light/dark theme; swaps XAML resource dictionaries; sets DWM caption color                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `PresetsManager`        | Manages named row-layout presets (load, save, reset, export from Checkup_Settings.json)                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `UiStateStore`          | Registry (`HKCU\Software\Checkup 2026\`) persistence for: window dimensions (all windows), active tab (Catalogs/Capabilities), Cards panel + Basic Logics panel open/close state, all dropdown popup sizes (autocomplete, field selector, Spezi picker), catalog column widths per catalog, last selected CatalogId + CapabilitySetId, CatalogPicker last-used tab per catalog, InfoDialog sizes per context key, Spezi expander state per group, Spezi view mode + last group. **Field Selector sticky zone (P3, done):** `PinnedFields` = semicolon-separated ordered FieldKey list; `FieldSelGroupCollapsed_<GroupName>` = "1"/"0" per group collapse state. Reset button clears both. **Document Name Field view mode:** `FileNameViewMode` = DWORD `0`/`1`/`2` (Plain/Compact/Detailed). |
+| `UiStateStore`          | Registry (`HKCU\Software\Checkup 2026\`) persistence for: window dimensions (all windows), active tab (Catalogs/Capabilities), Cards panel + Basic Logics panel open/close state, all dropdown popup sizes (autocomplete, field selector, Spezi picker), catalog column widths per catalog, last selected CatalogId + CapabilitySetId, CatalogPicker last-used tab per catalog, InfoDialog sizes per context key, Spezi expander state per group, Spezi view mode + last group. **Field Selector sticky zone (P3, done):** `PinnedFields` = semicolon-separated ordered FieldKey list; `FieldSelGroupCollapsed_<GroupName>` = "1"/"0" per group collapse state. Reset button clears both. **Document Name Field view mode:** `FileNameViewMode` = DWORD `0`/`1`/`2` (Plain/Compact/Detailed). **`DesignMode` flag:** `public static bool DesignMode { get; set; }` — when `true`, all five `TryLoad*` size methods return `false` immediately so every window opens at its factory/XAML size instead of the developer's persisted values. Set by the Design Harness at startup (see §7.7); never set during normal Inventor operation. |
 | `CatalogStore`          | Loads/saves catalog data (columns + entries) to AppData per-file JSON                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `CapabilityStore`       | Loads/saves capability sets (card definitions) to AppData per-file JSON                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `CardEngine`            | Evaluates card type logic — Dropdown, Button, Search, Link, Sync, MultiPick, PairTransform, PrefixSuffix, Sort, BasicLogic.                                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -1608,19 +1610,29 @@ The Catalog Editor is deliberately designed to **mimic standard spreadsheet beha
 
 ## 7. Technical Constraints
 
-### 7.1 .NET 4.8 porting rules (2024 project)
+### 7.1 .NET 4.8 porting rules (shared code compiled for 2024/2025)
 
-| 2026 (C# 12 / .NET 8)                 | 2024 (C# latest / .NET 4.8)     |
-|---------------------------------------|---------------------------------|
-| `str[n..]` range slice                  | `str.Substring(n)`                |
-| Named tuple returns `(Type A, Type B)`  | Public struct with named fields |
-| Tuple deconstruction `var (a, b) = ...` | Struct field access `cfg.FieldA`  |
-| LINQ `FirstOrDefault(predicate)`        | `foreach` loop with break         |
-| `new()` target-typed constructor        | Explicit constructor            |
-| `System.Text.Json`                      | `Newtonsoft.Json`                 |
-| Switch expressions                    | Work (LangVersion:latest)       |
-| `is not` patterns                       | Work (LangVersion:latest)       |
-| `?.` null-conditional chains            | Work in .NET 4.8                |
+Since Task #37 all common code lives in `CheckupAddin.Shared/`. When editing shared files, write code that compiles for **both** net48 (2024/2025) and net8 (2026/2027). Use `#if NET48` / `#else` / `#endif` guards for divergences. Three polyfill files in the shared project fill the most common gaps:
+
+| Polyfill file | What it enables in net48 |
+|---|---|
+| `IsExternalInitPolyfill.cs` | C# 9 `init`-only property setters |
+| `RangeIndexPolyfill.cs` | C# 8 range/index syntax: `arr[..N]`, `arr[^1]`, `str[n..]` |
+| `SharedGlobalUsings.cs` | `global using` for System, Collections, Linq, IO, Text, Threading |
+
+Remaining patterns that still need attention in shared code:
+
+| Pattern (net8) | net48 workaround |
+|---|---|
+| `System.Text.Json` serializer | `#if NET48` → `Newtonsoft.Json` (6 files already dual-coded) |
+| `str.Contains(sub, StringComparison)` | `str.IndexOf(sub, StringComparison) >= 0` |
+| `str.Split(char, StringSplitOptions)` | `str.Split(new[] { char }, StringSplitOptions)` |
+| `foreach (var (key, val) in dict)` KVP deconstruct | `foreach (var kvp in dict) { var key = kvp.Key; var val = kvp.Value; }` |
+| `AppConstants.RegistryBaseKey` / `.AppDataFolderName` | Provided by each head project's `AppConstants.cs` — use the constant, never hardcode a year string in shared code |
+| LINQ `FirstOrDefault(predicate)` | Works in net48 (not a divergence) |
+| `new()` target-typed constructors | Work in net48 with `LangVersion:latest` |
+| Switch expressions, `is not` patterns | Work in net48 with `LangVersion:latest` |
+| `?.` null-conditional chains | Work in net48 |
 
 ### 7.2 COM / Inventor API gotchas
 
@@ -1675,6 +1687,25 @@ locations). In tightly managed multi-user deployments this can prevent a standar
 user from unblocking an unsigned add-in at all; the add-in or its install location
 must then be approved centrally by an administrator.
 
+**Side-by-side installs — version-independent folder gotcha.** Inventor scans two
+kinds of add-in folders: **version-specific** (`…\Autodesk\Inventor <year>\Addins\`)
+and **version-independent** (`…\Autodesk\Inventor Addins\`, with *no* year — both the
+`%PROGRAMDATA%` and `%APPDATA%` variants). A manifest in the version-independent
+folder is read by **every** installed Inventor release. Combined with the open-ended
+lower bound that the manifests originally used (`SupportedSoftwareVersionGreaterThan`
+only), a single variant placed there loaded in its target release *and every newer
+one* — e.g. a 2026 manifest (`GreaterThan>29..`) in `%PROGRAMDATA%\Autodesk\Inventor
+Addins\` showed up as a second "Checkup" in Inventor 2027 (v31 > 29). This only
+surfaces on machines with **multiple Inventor versions installed side-by-side**
+(typically developers/testers). Two safeguards, both now in place: (1) every manifest
+sets **both** `SupportedSoftwareVersionGreaterThan` *and* `SupportedSoftwareVersionLessThan`
+so each variant self-restricts to exactly one release even from a shared folder; and
+(2) deploy each variant only to its **version-specific** folder, not the
+version-independent one. (Inventor's own "Override settings" file it writes when you
+toggle an add-in in the Add-In Manager — `LoadOnStartUp 0/1`, header `Created by
+Autodesk Inventor Version …` — can also linger in a version folder and re-appear each
+startup; delete it with Inventor closed.)
+
 ### 7.5 Build
 
 ```
@@ -1689,6 +1720,117 @@ NuGet build failure (MSB4018): delete `obj\project.assets.json` + `obj\project.n
 
 - `CreateDevSubfolders` (`AfterTargets="Build"`): creates `bin\Catalogs\` and `bin\Capabilities\` with `Condition="!Exists(...)"` — idempotent, never deletes or overwrites existing files. Ensures a developer can drop test files into these folders once and they survive all subsequent builds.
 - Files declared `<None Update … CopyToOutputDirectory="PreserveNewest">` in `.csproj` are copied flat into `bin\` (e.g. `IZ_Spezis_Baukasten.capability.json` → `bin\Capabilities\`). See the `<TargetPath>` element in `.csproj` for the exact destination path.
+
+**Design Harness build** (see §7.7; included in release bundles since v0.13.x):
+```
+dotnet restore DesignHarness\DesignHarness.csproj --runtime win-x64   # required on first build on a machine without VS NuGet fallback folder
+msbuild DesignHarness\DesignHarness.csproj /p:Configuration=Debug /p:Platform=x64
+```
+Output: `DesignHarness\bin\CheckupAddIn.DesignHarness.exe` (flat output, no framework/RID subfolder).
+
+**Runtime requirements for the DesignHarness release bundle:**
+- .NET 8 Desktop Runtime (x64) must be installed on the target machine
+- `Autodesk.Inventor.Interop.dll` from the Inventor 2026 install must be placed next to `CheckupAddIn.DesignHarness.exe` (not shipped in the zip — gitignored, same as the add-in bundles)
+
+`build_release.ps1` handles the DesignHarness automatically (included by default; skip with `-SkipHarness`).
+
+### 7.6 Cross-Variant Resource File Linking
+
+**Canonical location:** The visual and language resource files below live **only** in the 2026 project. All other variants reference them via MSBuild `<Link>` items so a single edit automatically propagates to all four variants on the next build. Physical copies in the other three projects have been deleted.
+
+| File | Canonical path (2026) | Link target (2024/2025/2027) |
+|---|---|---|
+| `DarkTheme.xaml` | `CheckupAddin2026\Resources\DarkTheme.xaml` | `Resources\DarkTheme.xaml` |
+| `LightTheme.xaml` | `CheckupAddin2026\Resources\LightTheme.xaml` | `Resources\LightTheme.xaml` |
+| `Addin_Language_File_DE.json` | `CheckupAddin2026\Resources\Languages\Addin_Language_File_DE.json` | `Resources\Languages\Addin_Language_File_DE.json` |
+| `Addin_Language_File_EN.json` | `CheckupAddin2026\Resources\Languages\Addin_Language_File_EN.json` | `Resources\Languages\Addin_Language_File_EN.json` |
+| `Addin_Language_File_DE.xaml` | `CheckupAddin2026\Resources\Languages\Addin_Language_File_DE.xaml` | `Resources\Languages\Addin_Language_File_DE.xaml` (**2027 only**) |
+
+**`.csproj` pattern** (identical for DarkTheme/LightTheme XAML pages):
+```xml
+<Page Include="..\..\CheckupAddin2026\CheckupAddin2026\Resources\DarkTheme.xaml">
+    <Link>Resources\DarkTheme.xaml</Link>
+</Page>
+```
+**`.csproj` pattern** (JSON files — copy to output directory):
+```xml
+<None Include="..\..\CheckupAddin2026\CheckupAddin2026\Resources\Languages\Addin_Language_File_DE.json">
+    <Link>Resources\Languages\Addin_Language_File_DE.json</Link>
+    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    <TargetPath>Languages\Addin_Language_File_DE.json</TargetPath>
+</None>
+```
+The `<Link>` value sets the logical path inside the compiled assembly (pack URI) and the copy destination. WPF resolves pack URIs relative to the **consuming** assembly name, so each variant compiles the linked XAML files under its own assembly name — no URI conflicts.
+
+**Why `DE.xaml` is NOT linked into 2024/2025:** `Addin_Language_File_DE.xaml` contains a `<sys:String>` resource that references `xmlns:sys`. .NET 8 requires `assembly=System.Runtime`; .NET 4.8 requires `assembly=mscorlib`. A single physical file can only carry one `xmlns:sys` declaration, so sharing across framework lineages is impossible. **Do not attempt to link or unify `DE.xaml` between net48 (2024/2025) and net8 (2026/2027).** 2027 (net8) safely links from 2026 because both use `assembly=System.Runtime`.
+
+### 7.7 Design Harness (build-time tool)
+
+The **Design Harness** (`DesignHarness\`) is a standalone WPF application for a **designer** to tune the add-in's visuals without building or running Inventor. It is packaged and published alongside the four add-in bundles as `CheckupDesignHarness_<Tag>.zip` — intended for users who want to customize the add-in's appearance without cloning the full repo. It is also useful for contributors who cloned the public repo and want to preview visual changes before building all four variants.
+
+**What it provides:**
+- **Window picker:** launches all 8 add-in windows as live previews (Main, Logics-Constructor [Catalog + Capabilities tabs], Catalog Picker, 3 Info windows, Input, PresetPicker).
+- **Colors editor:** change any theme color → all open preview windows update live → **Export** writes the new color table back into 2026's `DarkTheme.xaml` and `LightTheme.xaml` source files.
+- **Labels editor:** change any UI string → live update → **Export** writes back to `Addin_Language_File_DE.json` / `EN.json`.
+- **Font / size sliders:** adjust `CheckupFontFamily` and `CheckupBaseFontSize` typography resources → live update → **Export** writes back to the theme XAML files.
+- **Window W/H fields:** read the active preview window's current size; **Apply Size** resizes it; **Export Size** writes back to the Window root XAML (`Width`/`Height` attributes).
+- **Structural editing** (positional XAML): use **Blend for Visual Studio** targeting this harness — it provides full WYSIWYG layout.
+
+**Architecture:**
+- `ProjectReference` to CheckupAddin2026 only (2026 is the canonical source; linked files propagate the 2026 changes to all variants at build time).
+- One shared `ResourceDictionary` instance is added to every preview window's `MergedDictionaries` — editing a resource updates all open windows without leaking into the harness shell.
+- `UiStateStore.DesignMode = true` is set at startup so all `TryLoad*` size methods return `false` — windows always open at their factory/XAML sizes, not the developer's persisted registry values.
+- Preview windows use in-memory demo catalog/capability data (harness never calls any `Save()` method — source files are written only on explicit Export).
+- `InternalsVisibleTo("CheckupAddIn.DesignHarness")` is declared in each variant's `InternalsVisibleTo.cs` so the harness can access `internal` members (e.g. `UiStateStore.DesignMode`, `CatalogBuilderViewModel`).
+
+**Run:**
+```
+DesignHarness\bin\CheckupAddIn.DesignHarness.exe
+```
+Crash log (WPF unhandled exceptions are otherwise silent): `%TEMP%\CheckupHarness_error.log`.
+
+**Laptop / cold-cache build note:** On machines where `C:\Program Files (x86)\Microsoft Visual Studio\Shared\NuGetPackages` does not exist (absent on some VS Community installs), MSBuild's NuGet restore task fails with a missing fallback folder error. Fix: run `dotnet restore DesignHarness\DesignHarness.csproj --runtime win-x64` before MSBuild. This is a one-time step per machine.
+
+**Known init-time gotcha:** XAML `IsChecked="True"` / `SelectedIndex` / `Slider Value` attributes fire their event handlers **during `InitializeComponent`**, before later-declared controls exist. All such handlers are guarded with `if (!IsLoaded) return;`.
+
+### 7.8 VS Shared Project Structure (Task #37)
+
+**Since Task #37**, all common C# and XAML lives in `CheckupAddin.Shared/` (a Visual Studio Shared Project). The four head project directories (`CheckupAddin2024/` … `CheckupAddin2027/`) each contain only variant-specific identity files:
+
+| File in head project | Purpose |
+|---|---|
+| `StandardAddInServer.cs` | COM entry point — unique GUID + ProgId per variant |
+| `AppConstants.cs` | Year-specific string constants: `RegistryBaseKey`, `AppDataFolderName` |
+| `InternalsVisibleTo.cs` | `[assembly: InternalsVisibleTo]` attributes |
+| `*.csproj` | Framework, Inventor interop reference, NuGet packages, shared project import |
+| `Autodesk.CheckupAddIn<year>.addin` | Inventor manifest |
+| `Autodesk.CheckupAddIn<year>.addin.template` | Manifest template for release packaging |
+
+**Shared Project layout** (`CheckupAddin.Shared/`):
+
+```
+CheckupAddin.Shared.shproj        — VS Shared Project definition (GUID 5E7A4B3C-...)
+CheckupAddin.Shared.projitems     — MSBuild item list (50+ files)
+SharedGlobalUsings.cs             — global using declarations for net48
+IsExternalInitPolyfill.cs         — System.Runtime.CompilerServices.IsExternalInit stub (net48)
+RangeIndexPolyfill.cs             — System.Index, System.Range, RuntimeHelpers.GetSubArray<T> (net48)
+InternalsVisibleTo.cs             — shared assembly-level attributes
+Converters\                       — WPF value converters
+Helpers\                          — BindingProxy and other helpers
+Models\                           — RowModel, CapabilityData, CatalogData, PresetData, …
+Services\                         — FieldCatalogBuilder, PropertyReader, UiStateStore, …
+ViewModels\                       — CheckupViewModel, CatalogBuilderViewModel, RelayCommand
+Views\                            — All XAML windows (Page items) + code-behind (Compile items)
+```
+
+**Import pattern** added to each head `.csproj`:
+```xml
+<Import Project="..\..\CheckupAddin.Shared\CheckupAddin.Shared.projitems" Label="Shared" />
+```
+
+**Editing shared code:** make the change once in `CheckupAddin.Shared/` — it compiles into all 4 variants automatically. For net48 divergences use `#if NET48` guards (see §7.1). Use `AppConstants.RegistryBaseKey` and `AppConstants.AppDataFolderName` where year strings are needed; never hardcode them in shared files.
+
+**All 4 variants produce `AssemblyName = CheckupAddIn` → `CheckupAddIn.dll`.** Pack URIs are therefore `/CheckupAddIn;component/Resources/...` uniformly across all variants.
 
 ---
 
@@ -1793,8 +1935,15 @@ Alphabetical quick-reference. Every term used in this TDD, conversations, and co
 
 | File / Path                                               | Purpose                                                                                                                                                                                                                                    |
 |-----------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `CheckupAddin2026\CheckupAddin2026\`                        | 2026 project root                                                                                                                                                                                                                          |
-| `CheckupAddin2024\CheckupAddin2024\`                        | 2024 project root                                                                                                                                                                                                                          |
+| `CheckupAddin.Shared\`                                      | VS Shared Project — all common C# and XAML; compiled into all 4 variants; edit here once, builds everywhere (see §7.8)                                                                                                                    |
+| `CheckupAddin.Shared\CheckupAddin.Shared.projitems`         | MSBuild item list imported by each head csproj; lists every shared file                                                                                                                                                                   |
+| `CheckupAddin2026\CheckupAddin2026\`                        | 2026 **head project** (thin): StandardAddInServer, AppConstants, InternalsVisibleTo, .csproj, .addin; also the **canonical source** for shared resource files (DarkTheme.xaml, LightTheme.xaml, language JSON/XAML)                       |
+| `CheckupAddin2024\CheckupAddin2024\`                        | 2024 head project (thin): same identity files; DarkTheme/LightTheme/language JSON linked from 2026 (no physical copies)                                                                                                                   |
+| `CheckupAddin2025\CheckupAddin2025\`                        | 2025 head project (thin): same linking rules as 2024                                                                                                                                                                                      |
+| `CheckupAddin2027\CheckupAddin2027\`                        | 2027 head project (thin): same linking rules as 2026 (also links DE.xaml from 2026)                                                                                                                                                       |
+| `DesignHarness\`                                            | Build-time designer tool; standalone WPF exe; `ProjectReference` to 2026; not shipped (see §7.7)                                                                                                                                         |
+| `DesignHarness\bin\CheckupAddIn.DesignHarness.exe`          | Design Harness executable (flat output path — no framework/RID subfolder)                                                                                                                                                                |
+| `DesignHarness.slnx`                                        | Solution file for the Design Harness (opens in VS 2022 v17.14+; set DesignHarness as startup project, then F5)                                                                                                                           |
 | `docs\CheckupAddin - Technical Design Document.md`          | This TDD                                                                                                                                                                                                                                   |
 | `bin\Catalogs\`                                             | Distribution + dev catalogs; created by build (`CreateDevSubfolders`); never overwritten by build; shipped files added as `CopyToOutputDirectory=PreserveNewest` in `.csproj` for V1.0                                                           |
 | `bin\Capabilities\`                                         | Distribution + dev capabilities; same rules as `bin\Catalogs\`                                                                                                                                                                               |
@@ -1864,6 +2013,25 @@ The GPL-3.0 formally requires all linked libraries to be free software. `Autodes
 ## 14. Change History
 
 Public release history.
+
+### v0.13.2 — DesignHarness public + VS Shared Project restructure + multi-version manifest fix (2026-06-17)
+
+- **DesignHarness now public and shipped:** included in release bundles as `CheckupDesignHarness_<Tag>.zip`; packaged by `build_release.ps1` (default; opt-out with `-SkipHarness`). Requires .NET 8 Desktop Runtime + Inventor 2026 interop DLL from user's install. Source already in the public repo under `DesignHarness\`.
+- **VS Shared Project restructure** (Task #37): all common C# and XAML moved from 4 full copies into `CheckupAddin.Shared/` (`.shproj` + `.projitems`). The four head project directories now contain only variant-specific identity files (`StandardAddInServer.cs`, `AppConstants.cs`, `InternalsVisibleTo.cs`, `.csproj`, `.addin`). Future code changes go in the shared project once and compile into all 4 variants automatically (see §7.8).
+- **Assembly name unification**: all 4 variants now produce `AssemblyName = CheckupAddIn` → `CheckupAddIn.dll`. Pack URIs are uniform: `/CheckupAddIn;component/...`. The 2024 and 2025 release zips were previously named `CheckupAddIn2024.dll` / `CheckupAddIn2025.dll`; these are now `CheckupAddIn.dll` in all zips.
+- **`AppConstants.cs`** added to each head project: provides `RegistryBaseKey` and `AppDataFolderName` year-specific constants consumed by shared `UiStateStore` and `PresetsManager`.
+- **net48 polyfills** (`IsExternalInitPolyfill.cs`, `RangeIndexPolyfill.cs`, `SharedGlobalUsings.cs`): enable C# 9 `init` setters, C# 8 range/index syntax, and implicit usings on .NET Framework 4.8 builds.
+- **`#if NET48` dual-coding** applied to 6 shared files that use `System.Text.Json` (CapabilityStore, CatalogStore, PresetsManager, UserSettings, CapabilityData, CatalogData): each switches between `System.Text.Json` (net8) and `Newtonsoft.Json` (net48) at the call site.
+- **Add-in manifest version gating fixed**: every `.addin` / `.addin.template` now sets **both** `SupportedSoftwareVersionGreaterThan` *and* `SupportedSoftwareVersionLessThan`, pinning each variant to exactly one Inventor release. Previously the open-ended lower bound let a lower-year variant load in newer Inventor versions when placed in the version-independent add-in folder (see §7.4).
+- **Language parity fix**: added the missing `Info_Main_Header` key to the EN language file and extended `Info_Main_RightClick` with the hover-tooltip sentence (DE↔EN now identical, 309 keys each).
+
+### v0.13.2 — Design Harness + cross-variant resource linking (Task #36) (2026-06-17)
+
+- **Design Harness** (`DesignHarness\`): new standalone WPF build-time tool allowing a designer to preview all 8 add-in windows, live-edit colors / labels / typography, and export changes directly back to the 2026 source XAML and JSON files (see §7.7).
+- **Cross-variant resource file linking** (Phase 2 of Task #36): `DarkTheme.xaml`, `LightTheme.xaml`, `Addin_Language_File_DE.json`, `Addin_Language_File_EN.json` are now **canonical in the 2026 project** and MSBuild-linked into 2024/2025/2027 via `<Page Include>` + `<Link>` and `<None Include>` + `<Link>` items. Physical copies deleted from 2024/2025/2027. `Addin_Language_File_DE.xaml` additionally linked into 2027 (net8 only; net48 guardrail for 2024/2025 — see §7.6).
+- **`UiStateStore.DesignMode`**: new `public static bool` flag; when `true`, all five `TryLoad*` size methods skip registry reads and return `false`, so harness preview windows always open at factory/XAML sizes (see §3 Services table / §7.7).
+- **`InternalsVisibleTo("CheckupAddIn.DesignHarness")`**: added to `InternalsVisibleTo.cs` in all four variants, granting the harness access to `internal` members.
+- **`CheckupFontFamily` / `CheckupBaseFontSize`** typography resources added to both theme XAML files; `CheckupWindow.xaml` now binds `FontFamily` / `FontSize` via `DynamicResource`, enabling live font-editing from the harness.
 
 ### v0.9.9 — Initial public release (2026-06-06)
 

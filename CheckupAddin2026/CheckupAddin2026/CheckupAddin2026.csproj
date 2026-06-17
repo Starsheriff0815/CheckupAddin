@@ -11,13 +11,15 @@
 		<RootNamespace>CheckupAddIn</RootNamespace>
 		<AssemblyName>CheckupAddIn</AssemblyName>
 		<GenerateAssemblyInfo>true</GenerateAssemblyInfo>
-		<Version>0.13.1</Version>
+		<Version>0.13.2</Version>
 		<Author>Norman Lindner</Author>
 		<Description>Checkup for Autodesk Inventor 2026</Description>
 		<OutputPath>bin\</OutputPath>
 		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
 		<AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
 	</PropertyGroup>
+
+	<Import Project="..\..\CheckupAddin.Shared\CheckupAddin.Shared.projitems" Label="Shared" />
 
 	<ItemGroup>
 		<Reference Include="Autodesk.Inventor.Interop">
