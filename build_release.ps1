@@ -88,6 +88,68 @@ function New-Bundle {
 }
 Write-Host ("Archiver: {0}" -f ($(if ($sevenZip) { $sevenZip } else { 'Compress-Archive (built-in)' }))) -ForegroundColor Cyan
 
+# --- Public/private boundary (git is the single source of truth) --------------
+# A release must contain only git-tracked content (+ build outputs); never a
+# gitignored DATA file. On dev machines the build output (bin\) is a deliberate
+# mix of public seeds (Demo.*) and private, gitignored files copied in for local
+# testing (Test_Spezifik.*, the interop DLL, the legacy Checkup_*.json). These
+# helpers make the packager honour the same line git already draws, so the same
+# rules protect this repo for every maintainer who clones it.
+
+# Basenames of every gitignored file in the working tree that is private DATA —
+# i.e. ignored AND not also tracked under the same name anywhere. Build/tooling
+# output dirs (bin, obj, .vs, packages, dist, Dotfuscator, tools) are excluded so
+# their artifacts (CheckupAddIn.dll, …) don't masquerade as private; the tracked
+# subtraction keeps public seeds (Demo.*, Checkup_Settings.json, language files)
+# out of the set even when ignored copies of them exist (e.g. under dist\).
+# What remains is the real private set: interop DLL, Test_Spezifik.*, legacy
+# Checkup_Catalogs/Capabilities.json[.migrated], generated *.addin, *.user, …
+$trackedNames = @( git -C $root ls-files ) |
+    ForEach-Object { Split-Path $_ -Leaf } | Sort-Object -Unique
+$privateNames = @(
+    git -C $root ls-files --others --ignored --exclude-standard -- `
+        '.' ':(exclude)**/bin/**' ':(exclude)**/obj/**' ':(exclude)**/.vs/**' `
+            ':(exclude)**/packages/**' ':(exclude)dist/**' ':(exclude)**/Dotfuscator/**' `
+            ':(exclude)**/tools/**'
+) | Where-Object { $_ } | ForEach-Object { Split-Path $_ -Leaf } |
+    Sort-Object -Unique | Where-Object { $trackedNames -notcontains $_ }
+
+# Hard stop: abort packaging if any staged file's name matches a private file.
+# This is the self-maintaining safety net — drop a new gitignored file into the
+# tree and it is refused automatically, no per-file denylist to maintain.
+function Assert-NoPrivateFiles {
+    param([string] $StageDir, [string] $Label)
+    $leaks = Get-ChildItem $StageDir -Recurse -File |
+        Where-Object { $privateNames -contains $_.Name }
+    if ($leaks) {
+        $list = ($leaks | ForEach-Object { $_.FullName.Substring($StageDir.Length + 1) }) -join "`n  "
+        throw "ABORT: private (gitignored) file(s) would ship in ${Label}:`n  $list"
+    }
+}
+
+# Copy ONLY the git-tracked (public) catalog/capability seeds for a variant into
+# the staging dir's Catalogs\ / Capabilities\ subfolders. bin\ may also hold the
+# private Test_Spezifik.* seeds — selecting by git-tracked source excludes them
+# structurally rather than by name.
+function Copy-PublicSeeds {
+    param([string] $VariantRelDir, [string] $Bin, [string] $Pkg)
+    $tracked = git -C $root ls-files -- `
+        "$VariantRelDir/Resources/*.catalog.json" `
+        "$VariantRelDir/Resources/*.capability.json"
+    foreach ($rel in $tracked) {
+        if (-not $rel) { continue }
+        $name = Split-Path $rel -Leaf
+        $sub  = if ($name -like '*.catalog.json') { 'Catalogs' } else { 'Capabilities' }
+        # Prefer the built copy (placed at <sub>\<name> by the csproj TargetPath);
+        # fall back to the tracked source (identical content) if absent.
+        $src = Join-Path $Bin "$sub\$name"
+        if (-not (Test-Path $src)) { $src = Join-Path $root $rel }
+        $destDir = Join-Path $Pkg $sub
+        New-Item -ItemType Directory $destDir -Force | Out-Null
+        Copy-Item $src $destDir
+    }
+}
+
 # --- Default tag from the 2026 project version --------------------------------
 if (-not $Tag) {
     $csproj = Join-Path $root 'CheckupAddin2026\CheckupAddin2026\CheckupAddin2026.csproj'
@@ -140,13 +202,11 @@ foreach ($y in $Years) {
     New-Item -ItemType Directory "$pkg\Languages" | Out-Null
     Copy-Item "$bin\Languages\*" "$pkg\Languages\" -Recurse
 
-    # Optional seed data
-    foreach ($sub in 'Catalogs', 'Capabilities') {
-        if (Test-Path "$bin\$sub") {
-            New-Item -ItemType Directory "$pkg\$sub" | Out-Null
-            Copy-Item "$bin\$sub\*" "$pkg\$sub\" -Recurse
-        }
-    }
+    # Seed data — ONLY the git-tracked public seeds (Demo.*). The private
+    # Test_Spezifik.* seeds also live in bin\ on dev machines; they must not ship.
+    Copy-PublicSeeds -VariantRelDir "CheckupAddin$y/CheckupAddin$y" -Bin $bin -Pkg $pkg
+
+    Assert-NoPrivateFiles -StageDir $pkg -Label "CheckupAddin$y"
 
     $zip = Join-Path $dist "CheckupAddin${y}_$Tag.zip"
     New-Bundle -SourceDir $pkg -ZipPath $zip
@@ -176,11 +236,30 @@ if ($SkipHarness) {
     $hpkg = Join-Path $dist 'release_DesignHarness'
     New-Item -ItemType Directory $hpkg | Out-Null
 
-    # Copy all output EXCEPT the proprietary Inventor interop and debug symbols.
-    # Users must copy Autodesk.Inventor.Interop.dll from their Inventor 2026 install.
+    # Copy the harness output EXCEPT:
+    #   - the proprietary Inventor interop (users copy it from their Inventor 2026 install)
+    #   - debug symbols (.pdb)
+    #   - the COM .addin manifest (meaningless for a standalone .exe — the harness is not
+    #     loaded by Inventor)
+    #   - .migrated runtime artifacts (regenerated by the store on first run)
+    #   - the legacy monolithic Checkup_Catalogs.json / Checkup_Capabilities.json
+    #     (gitignored; on dev machines they hold private Test_Spezifik data)
+    # Checkup_Settings.json IS kept — it is the tracked factory seed.
     Get-ChildItem $hbin -File | Where-Object {
-        $_.Name -ne 'Autodesk.Inventor.Interop.dll' -and $_.Extension -ne '.pdb'
+        $_.Name -ne 'Autodesk.Inventor.Interop.dll' -and
+        $_.Name -ne 'Checkup_Catalogs.json'          -and
+        $_.Name -ne 'Checkup_Capabilities.json'      -and
+        $_.Extension -ne '.pdb'      -and
+        $_.Extension -ne '.addin'    -and
+        $_.Extension -ne '.migrated'
     } | Copy-Item -Destination $hpkg
+
+    # Logics-Constructor preview seeds: ship the public Demo catalog/capability in
+    # the per-file format the store reads from BaseDirectory\Catalogs|Capabilities.
+    # This replaces the old legacy-json migration path and ships no private data.
+    Copy-PublicSeeds -VariantRelDir 'CheckupAddin2026/CheckupAddin2026' -Bin $hbin -Pkg $hpkg
+
+    Assert-NoPrivateFiles -StageDir $hpkg -Label 'CheckupDesignHarness'
 
     $hzip = Join-Path $dist "CheckupDesignHarness_$Tag.zip"
     New-Bundle -SourceDir $hpkg -ZipPath $hzip
