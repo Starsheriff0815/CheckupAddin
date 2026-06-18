@@ -38,4 +38,5 @@ Each phase ships a **test kit** (self-contained zip): the 2026 build (+ the user
 Suite stays 18/18 (I run it) · PerfLogger before/after captured by user · one commit per phase on the branch.
 
 ## Status log
-- 2026-06-18 — P0 started: branch created; roadmap committed; PerfLogger baseline instrumentation in progress; kit #1 (1a flicker fix, toggle-gated) being assembled.
+- 2026-06-18 — P0 done: branch created; roadmap committed; suite baseline 18/18 (net8+net48).
+- 2026-06-18 — Kit #1 READY (P1/1a): flicker fix behind the `perf_opt.on` toggle + PerfLogger open-latency & redraw-count; 2026 Release built clean; suite still 18/18. Zip: `dist\CheckupExperiment2026_kit1.zip`. **Awaiting user Inventor measurement (PAUSED).**

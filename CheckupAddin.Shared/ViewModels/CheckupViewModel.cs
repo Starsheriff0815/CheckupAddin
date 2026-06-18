@@ -1100,6 +1100,12 @@ namespace CheckupAddIn.ViewModels
         {
             var _sw = Stopwatch.StartNew();
 
+            // EXPERIMENT (branch experiment/optimize): per-refresh optimization toggle + redraw metrics.
+            bool _optOn = PerfLogger.OptimizationsOn();
+            RowModel.GuardUnchangedSetters  = _optOn;
+            RowModel.DisplayValueSetTotal   = 0;
+            RowModel.DisplayValueSetChanged = 0;
+
             _selectedDocs = _docResolver.GetAllSelectedDocuments(out bool isMulti, out bool isAssemblyFallback, out _instanceCounts, out _subAsmGroups);
             IsMultiSelection = isMulti;
 
@@ -1443,7 +1449,8 @@ namespace CheckupAddIn.ViewModels
             EnforceButtonRules();
 
             long _tTotal = _sw.ElapsedMilliseconds;
-            PerfLogger.LogRefresh(_tTotal, _tDocRes, _tCatalog - _tDocRes, _tRows - _tCatalog, _tTotal - _tRows, Rows.Count, FileName);
+            PerfLogger.LogRefresh(_tTotal, _tDocRes, _tCatalog - _tDocRes, _tRows - _tCatalog, _tTotal - _tRows, Rows.Count, FileName,
+                _optOn, RowModel.DisplayValueSetChanged, RowModel.DisplayValueSetTotal);
         }
 
         private static string TryRead(Func<string> fn)

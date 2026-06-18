@@ -49,6 +49,7 @@ namespace CheckupAddIn
             _catalogStore    = CatalogStore.Load(addinDir, localDir);
             _capabilityStore = CapabilityStore.Load(addinDir, localDir);
             LanguageLoader.Detect(_app);
+            PerfLogger.Enabled = true; // EXPERIMENT BUILD ONLY (branch experiment/optimize) — never merge to main.
 
             try
             {
@@ -261,6 +262,7 @@ namespace CheckupAddIn
                 }
 
                 // Create new ViewModel and Window
+                var _swOpen = System.Diagnostics.Stopwatch.StartNew();
                 PerfLogger.LogSession("Checkup 2026 activated");
                 _viewModel = new CheckupViewModel(_app, _userSettings, _catalogStore, _capabilityStore);
                 _window = new CheckupWindow();
@@ -282,6 +284,7 @@ namespace CheckupAddIn
                 };
 
                 _window.Show();
+                PerfLogger.LogOpen(_swOpen.ElapsedMilliseconds, PerfLogger.OptimizationsOn());
             }
             catch (Exception ex)
             {
