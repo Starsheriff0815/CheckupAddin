@@ -57,12 +57,14 @@ namespace CheckupAddIn.Services
         public static void LogRefresh(long totalMs, long docResMs, long catalogMs,
                                       long rowsMs, long postPassMs,
                                       int rowCount, string docName,
-                                      bool optOn, long redrawChanged, long redrawTotal)
+                                      bool optOn, long redrawChanged, long redrawTotal,
+                                      bool cacheHit = false)
         {
             if (!Enabled) return;
             string line =
                 $"[{DateTime.Now:HH:mm:ss.fff}]" +
                 $"  OPT={(optOn ? "ON " : "off")}" +
+                $"  {(cacheHit ? "CACHE=HIT" : "CACHE=---")}" +
                 $"  Total={totalMs,4}ms" +
                 $"  DocRes={docResMs,3}ms" +
                 $"  Cat={catalogMs,3}ms" +

@@ -69,6 +69,12 @@ namespace CheckupAddIn.ViewModels
         private const int                IDLE_STOP_AFTER_TICKS = 4;       // 4 × 15 s = 60 s
         // ▲▲▲ ─────────────────────────────────────────────────────────────────────────────── ▲▲▲
         private int                      _noChangeTicks  = 0;
+        // ── EXPERIMENT (kit2): refresh value cache — eliminates COM reads on unchanged-assembly ticks ──
+        private bool                                _refreshCacheInvalid    = true;
+        private string                              _refreshCacheSig        = "";
+        private readonly Dictionary<string, string> _refreshValueCache      = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, string> _refreshFormulaCache    = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, bool>   _refreshHasFormulaCache = new(StringComparer.Ordinal);
         private DispatcherTimer          _autoRefresh;
         private EventHandler             _selectDebounceTick;
         private EventHandler             _selectSetPollerTick;
@@ -804,6 +810,7 @@ namespace CheckupAddIn.ViewModels
             {
                 _stickyDocs = null;   // document switch always resets sticky selection
                 _catalogBuilder.InvalidateCache();
+                InvalidateRefreshCache();
                 SubscribeDocEvents(docObj as Document);
                 SafeRefresh();
             }
@@ -930,6 +937,7 @@ namespace CheckupAddIn.ViewModels
                 try
                 {
                     ResetFallbackTimer();
+                    InvalidateRefreshCache();
                     if (!Rows.Any(r => r.IsInlineEditing))
                         DoRefresh();
                 }
@@ -960,6 +968,8 @@ namespace CheckupAddIn.ViewModels
             if (_autoRefresh != null && !_autoRefresh.IsEnabled)
                 _autoRefresh.Start();
         }
+
+        private void InvalidateRefreshCache() => _refreshCacheInvalid = true;
 
         // ══════════════════════════════════════════════
         //  INITIALIZATION
@@ -1075,6 +1085,20 @@ namespace CheckupAddIn.ViewModels
         // ══════════════════════════════════════════════
 
         /// <summary>
+        /// Builds a stable, order-independent signature from the given document paths.
+        /// Used by the refresh value cache to detect selection changes without COM calls.
+        /// </summary>
+        internal static string BuildDocSignature(IEnumerable<string> paths)
+        {
+            if (paths == null) return "";
+            var sorted = new List<string>();
+            foreach (var p in paths)
+                if (p != null) sorted.Add(p);
+            sorted.Sort(StringComparer.OrdinalIgnoreCase);
+            return string.Join("|", sorted);
+        }
+
+        /// <summary>
         /// Refreshes all row values from the active Inventor document.
         /// Sets _isRefreshing to block re-entrant calls (FieldCatalog setter calls RebuildGroupedCatalog,
         /// which must not trigger another full refresh).
@@ -1093,6 +1117,7 @@ namespace CheckupAddIn.ViewModels
         public void InvalidateFieldCatalog()
         {
             _catalogBuilder.InvalidateCache();
+            InvalidateRefreshCache();
             DoRefresh();
         }
 
@@ -1144,6 +1169,21 @@ namespace CheckupAddIn.ViewModels
 
             long _tCatalog = _sw.ElapsedMilliseconds;
 
+            // EXPERIMENT (kit2): refresh value cache — pre-compute doc paths, check hit/miss.
+            // Only active when OPT=on; baseline (OPT=off) is fully unchanged.
+            string[] _docPaths = null;
+            string   _docSig   = "";
+            bool     _cacheHit = false;
+            if (_optOn)
+            {
+                _docPaths = new string[_selectedDocs.Count];
+                for (int i = 0; i < _selectedDocs.Count; i++)
+                    try { _docPaths[i] = _selectedDocs[i].FullFileName; } catch { _docPaths[i] = ""; }
+                _docSig   = BuildDocSignature(_docPaths);
+                _cacheHit = !_refreshCacheInvalid && _docSig == _refreshCacheSig && _refreshValueCache.Count > 0;
+                if (!_cacheHit) { _refreshValueCache.Clear(); _refreshHasFormulaCache.Clear(); _refreshFormulaCache.Clear(); }
+            }
+
             foreach (var row in Rows)
             {
                 // Don't disrupt an active inline edit
@@ -1191,13 +1231,39 @@ namespace CheckupAddIn.ViewModels
                         row.IsWritableField = false;
                         row.HasPickerButton  = false;
                     }
-                    var vals = _selectedDocs
-                        .Select(doc => _catalogBuilder.ResolveFieldValue(row.FieldKey, doc))
-                        .ToList();
+                    // EXPERIMENT (kit2): cache hit → serve values from dictionary, zero COM calls.
+                    //                   cache miss → read from COM, populate dictionary.
+                    List<string> vals;
+                    if (_cacheHit)
+                    {
+                        vals = new List<string>(_selectedDocs.Count);
+                        for (int i = 0; i < _selectedDocs.Count; i++)
+                        {
+                            _refreshValueCache.TryGetValue(_docPaths[i] + "||" + row.FieldKey, out string cv);
+                            vals.Add(cv ?? "");
+                        }
+                        _refreshHasFormulaCache.TryGetValue(row.FieldKey, out bool hf);
+                        row.HasFormula  = hf;
+                        row.FormulaText = hf && _refreshFormulaCache.TryGetValue(row.FieldKey, out string ft) ? ft : "";
+                    }
+                    else
+                    {
+                        vals = new List<string>(_selectedDocs.Count);
+                        for (int i = 0; i < _selectedDocs.Count; i++)
+                        {
+                            string v = _catalogBuilder.ResolveFieldValue(row.FieldKey, _selectedDocs[i]);
+                            if (_optOn) _refreshValueCache[_docPaths[i] + "||" + row.FieldKey] = v;
+                            vals.Add(v);
+                        }
+                        // fx: detect a formula behind the value (single-selection only).
+                        UpdateFormulaState(row);
+                        if (_optOn)
+                        {
+                            _refreshHasFormulaCache[row.FieldKey] = row.HasFormula;
+                            _refreshFormulaCache[row.FieldKey]    = row.FormulaText;
+                        }
+                    }
                     SetAggregatedValue(row, vals, Brushes.Black);
-
-                    // fx: detect a formula behind the value (single-selection only — formulas are per-doc).
-                    UpdateFormulaState(row);
 
                     // A formula-driven field provably exists and is writable (we just read its
                     // Expression), so it must never be shown as "missing" (strikethrough label) or
@@ -1227,6 +1293,9 @@ namespace CheckupAddIn.ViewModels
             }
 
             long _tRows = _sw.ElapsedMilliseconds;
+
+            // EXPERIMENT (kit2): seal the cache after a full read so subsequent ticks can hit it.
+            if (_optOn && !_cacheHit) { _refreshCacheSig = _docSig; _refreshCacheInvalid = false; }
 
             // Post-pass: SPECIAL:LOGIC: cycle sentinel — surface as user-visible warning.
             // ResolveFieldValue returns FieldCatalogBuilder.CycleSentinel when a closed TargetFieldKey
@@ -1450,7 +1519,7 @@ namespace CheckupAddIn.ViewModels
 
             long _tTotal = _sw.ElapsedMilliseconds;
             PerfLogger.LogRefresh(_tTotal, _tDocRes, _tCatalog - _tDocRes, _tRows - _tCatalog, _tTotal - _tRows, Rows.Count, FileName,
-                _optOn, RowModel.DisplayValueSetChanged, RowModel.DisplayValueSetTotal);
+                _optOn, RowModel.DisplayValueSetChanged, RowModel.DisplayValueSetTotal, _cacheHit);
         }
 
         private static string TryRead(Func<string> fn)
@@ -2191,6 +2260,7 @@ namespace CheckupAddIn.ViewModels
 
                     row.IsInlineEditing = false;
                     _catalogBuilder.InvalidateCache();
+                    InvalidateRefreshCache();
                     didWrite = true;
                 }
             } // batch TryUpdate fires here; dependents propagate before DoRefresh re-reads
@@ -2385,6 +2455,7 @@ namespace CheckupAddIn.ViewModels
                     row.IsExpertPendingApply = false;
                     row.ExpertComputedValue  = null;
                     _catalogBuilder.InvalidateCache();
+                    InvalidateRefreshCache();
                     didWrite = true;
                 }
             } // batch TryUpdate fires here; dependents propagate before DoRefresh re-reads
@@ -2552,6 +2623,7 @@ namespace CheckupAddIn.ViewModels
             SetActivePreset(0);
             ApplyFileNameViewMode(0);   // back to Standard (S) view, persisted to HKCU
             _catalogBuilder?.InvalidateCache();
+            InvalidateRefreshCache();
             InitializeDefaultRows();
             DoRefresh();
             StatusMessage = string.Format(LanguageLoader.Get("Msg_ResetDone"), DateTime.Now.ToString("HH:mm:ss"));
