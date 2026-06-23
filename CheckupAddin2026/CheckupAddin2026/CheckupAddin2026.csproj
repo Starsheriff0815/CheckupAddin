@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<TargetFramework>net8.0-windows</TargetFramework>
@@ -11,7 +11,7 @@
 		<RootNamespace>CheckupAddIn</RootNamespace>
 		<AssemblyName>CheckupAddIn</AssemblyName>
 		<GenerateAssemblyInfo>true</GenerateAssemblyInfo>
-		<Version>0.13.2</Version>
+		<Version>0.14.0</Version>
 		<Author>Norman Lindner</Author>
 		<Description>Checkup for Autodesk Inventor 2026</Description>
 		<OutputPath>bin\</OutputPath>
