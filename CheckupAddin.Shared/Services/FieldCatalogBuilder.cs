@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Inventor;
 using CheckupAddIn.Models;
 
@@ -26,6 +27,37 @@ namespace CheckupAddIn.Services
         // Cache: keyed by document full path — avoids rebuilding on every refresh call for the same document.
         private string _cachedDocPath = "";
         private List<FieldItem> _cachedCatalog;
+
+        // ── EXPERIMENT (kit3 / P1-2a): application-global asset-library cache ──
+        // The active material/appearance library asset names are app-wide (identical for every
+        // document) and do NOT change when an iProperty/parameter value is written, yet the
+        // current code re-walks them on every catalog build — including every value-edit rebuild
+        // (InvalidateCache fires on writes). Caching them here skips that COM walk on all builds
+        // after the first in a panel session. Survives InvalidateCache() by design; the
+        // FieldCatalogBuilder is recreated on each panel open, which bounds staleness to one
+        // session. Gated by CacheAssetLists (set from the perf_opt.on toggle) so OFF == baseline.
+        public bool CacheAssetLists;                       // set from _optOn in DoRefreshCore
+        private IReadOnlyList<string> _cachedMatLibNames;  // active material library asset names
+        private IReadOnlyList<string> _cachedAppLibNames;  // active appearance library asset names
+        private bool _matLibCached;                        // distinguishes "cached as null" from "not cached"
+        private bool _appLibCached;
+
+        // ── EXPERIMENT (kit4 / P1-2b): PropertySet + Parameter structure cache ──
+        // iProperty names and parameter names for a document do not change when a value is
+        // written, yet InvalidateCache() forces a full COM walk on every post-write rebuild.
+        // This cache holds the IPROP/UDEF/PARAM FieldItems per document path and survives
+        // InvalidateCache(), bounding staleness to one doc visit (cleared on next doc-switch).
+        // Gated by CachePropertyStructure so OFF == baseline.
+        public bool CachePropertyStructure;
+        private string _cachedPropStructPath = "";
+        private List<FieldItem> _cachedPropStructItems;
+
+        // ── EXPERIMENT (kit5 / P1-3): batch PropertySet reads ──
+        // ResolveFieldValue opens the same PropertySet once per row per refresh cycle. With 25
+        // rows sharing the same PropertySet, that is 25 COM open calls instead of 1. BatchReadValues
+        // groups keys by PropertySet, opens each set once, then reads all needed properties in one
+        // pass. Gated by BatchValueReads so OFF == baseline (individual ResolveFieldValue calls).
+        public bool BatchValueReads;
 
         public FieldCatalogBuilder(Inventor.Application app = null, CapabilityStore capStore = null)
         {
@@ -111,6 +143,11 @@ namespace CheckupAddIn.Services
 
         private List<FieldItem> BuildCatalog(Document doc)
         {
+            var _swBuild = Stopwatch.StartNew();
+            string DocName() { try { return doc?.DisplayName ?? ""; } catch { return ""; } }
+            string docPath = "";
+            try { if (doc != null) docPath = doc.FullFileName; } catch { }
+
             var items = new List<FieldItem>();
 
             items.Add(new FieldItem("", LanguageLoader.Get("Field_None"), "", GRP_NONE, false));
@@ -119,6 +156,8 @@ namespace CheckupAddIn.Services
             // Enumerated once per catalog build (triggered by document change, not every refresh).
             var materialNames   = BuildAssetNameList(doc, forMaterial: true);
             var appearanceNames = BuildAssetNameList(doc, forMaterial: false);
+
+            long _assetMs = _swBuild.ElapsedMilliseconds;
 
             (string tag, string labelKey, bool writable)[] docFields =
             {
@@ -145,63 +184,37 @@ namespace CheckupAddIn.Services
                     allowedValues: allowed));
             }
 
-            if (doc == null) return items;
-
-            // ── iProperties — enumerate all PropertySets ──
-            // Use DisplayName (not internal COM name) to detect user-defined sets;
-            // the key for IPROP uses the COM name so FieldWriter can look up the same set.
-            try
+            if (doc == null)
             {
-                foreach (PropertySet ps in doc.PropertySets)
+                PerfLogger.LogCatalogBuild(_assetMs, 0, _swBuild.ElapsedMilliseconds - _assetMs, false, DocName());
+                return items;
+            }
+
+            // ── PropertySet + Parameter structure (EXPERIMENT kit4 / 2b: cached per doc path) ──
+            // iProperty and parameter names do not change when a value is written; caching them
+            // here lets post-write rebuilds skip the COM walk entirely.
+            bool _structHit = false;
+            long _structMs  = 0;
+            List<FieldItem> structItems;
+
+            if (CachePropertyStructure && docPath != "" && docPath == _cachedPropStructPath
+                && _cachedPropStructItems != null)
+            {
+                structItems = _cachedPropStructItems;
+                _structHit  = true;
+            }
+            else
+            {
+                var _swStruct = Stopwatch.StartNew();
+                structItems = BuildStructureItems(doc);
+                _structMs   = _swStruct.ElapsedMilliseconds;
+                if (CachePropertyStructure && docPath != "")
                 {
-                    string setName = ps.DisplayName ?? ps.Name ?? "Unknown";
-                    bool isUserDef = IsUserDefinedSet(setName);
-
-                    foreach (Property prop in ps)
-                    {
-                        try
-                        {
-                            string propName = prop.Name;
-                            if (string.IsNullOrWhiteSpace(propName)) continue;
-
-                            if (isUserDef)
-                            {
-                                // UDEF key uses only the property name — FieldWriter searches all user-defined sets.
-                                string key = $"UDEF:{propName}";
-                                if (!items.Any(x => x.Key == key))
-                                    items.Add(new FieldItem(key, propName, propName,
-                                        GRP_IPROP_CUST, isWritable: true));
-                            }
-                            else
-                            {
-                                // Normalise to the English canonical set name so the key is stable
-                                // across German/English Inventor installations.
-                                string keySetName = NormalizeSetName(setName);
-                                string key = $"IPROP|{keySetName}|{propName}";
-                                if (!items.Any(x => x.Key == key))
-                                    items.Add(new FieldItem(key, propName, propName,
-                                        GRP_IPROP, isWritable: true));
-                            }
-                        }
-                        catch { }
-                    }
+                    _cachedPropStructPath  = docPath;
+                    _cachedPropStructItems = structItems;
                 }
             }
-            catch { }
-
-            // ── Parameters ──
-            if (doc.DocumentType == DocumentTypeEnum.kPartDocumentObject)
-            {
-                var part = (PartDocument)doc;
-                var compDef = part.ComponentDefinition;
-                AddParameters(items, compDef.Parameters);
-            }
-            else if (doc.DocumentType == DocumentTypeEnum.kAssemblyDocumentObject)
-            {
-                var asm = (AssemblyDocument)doc;
-                var compDef = asm.ComponentDefinition;
-                AddParameters(items, compDef.Parameters);
-            }
+            items.AddRange(structItems);
 
             // ── Logic Sets: each Card Group with a TargetFieldKey gets a SPECIAL:LOGIC:{group.Id} entry ──
             // These appear in the Special group.
@@ -228,9 +241,70 @@ namespace CheckupAddIn.Services
                 }
             }
 
-            return items.OrderBy(x => GroupOrder(x.GroupName))
-                        .ThenBy(x => x.DropText, NaturalComparer)
-                        .ToList();
+            var _result = items.OrderBy(x => GroupOrder(x.GroupName))
+                               .ThenBy(x => x.DropText, NaturalComparer)
+                               .ToList();
+            PerfLogger.LogCatalogBuild(_assetMs, _structMs,
+                _swBuild.ElapsedMilliseconds - _assetMs - _structMs, _structHit, DocName());
+            return _result;
+        }
+
+        /// <summary>
+        /// Walks the document's PropertySets and Parameters via COM and returns the resulting
+        /// FieldItems (IPROP / UDEF / PARAM). Extracted from BuildCatalog so the result can be
+        /// cached per document path by the Kit4 structural cache (see CachePropertyStructure).
+        /// Uses a HashSet for O(1) dedup instead of the prior O(n) items.Any() scan.
+        /// </summary>
+        private List<FieldItem> BuildStructureItems(Document doc)
+        {
+            var structItems = new List<FieldItem>();
+            var seenKeys    = new HashSet<string>(StringComparer.Ordinal);
+
+            // ── iProperties — enumerate all PropertySets ──
+            // NormalizeSetName and IsUserDefinedSet are hoisted per PropertySet (not per Property).
+            try
+            {
+                foreach (PropertySet ps in doc.PropertySets)
+                {
+                    string setName   = ps.DisplayName ?? ps.Name ?? "Unknown";
+                    bool   isUserDef = IsUserDefinedSet(setName);
+                    string keySetName = isUserDef ? null : NormalizeSetName(setName);
+
+                    foreach (Property prop in ps)
+                    {
+                        try
+                        {
+                            string propName = prop.Name;
+                            if (string.IsNullOrWhiteSpace(propName)) continue;
+
+                            if (isUserDef)
+                            {
+                                string key = $"UDEF:{propName}";
+                                if (seenKeys.Add(key))
+                                    structItems.Add(new FieldItem(key, propName, propName,
+                                        GRP_IPROP_CUST, isWritable: true));
+                            }
+                            else
+                            {
+                                string key = $"IPROP|{keySetName}|{propName}";
+                                if (seenKeys.Add(key))
+                                    structItems.Add(new FieldItem(key, propName, propName,
+                                        GRP_IPROP, isWritable: true));
+                            }
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch { }
+
+            // ── Parameters ──
+            if (doc.DocumentType == DocumentTypeEnum.kPartDocumentObject)
+                AddParameters(structItems, seenKeys, ((PartDocument)doc).ComponentDefinition.Parameters);
+            else if (doc.DocumentType == DocumentTypeEnum.kAssemblyDocumentObject)
+                AddParameters(structItems, seenKeys, ((AssemblyDocument)doc).ComponentDefinition.Parameters);
+
+            return structItems;
         }
 
         private static readonly IComparer<string> NaturalComparer =
@@ -281,10 +355,8 @@ namespace CheckupAddIn.Services
             _                       => 8,
         };
 
-        private static void AddParameters(List<FieldItem> items, Parameters parameters)
+        private static void AddParameters(List<FieldItem> items, HashSet<string> seenKeys, Parameters parameters)
         {
-            var seenKeys = new HashSet<string>(items.Select(x => x.Key), StringComparer.Ordinal);
-
             // User parameters first (typically the ones named by the designer).
             try
             {
@@ -348,44 +420,93 @@ namespace CheckupAddIn.Services
         }
 
         /// <summary>
-        /// Enumerates asset names (materials or appearances) from the active library.
-        /// Returns a sorted deduplicated list, or null if nothing was found.
+        /// Enumerates asset names (materials or appearances) visible for <paramref name="doc"/>:
+        /// the union of the document's own assets and the active library's assets, deduplicated
+        /// (OrdinalIgnoreCase, document entries winning) and sorted. Returns null if nothing found.
+        /// The expensive active-library walk is cached when CacheAssetLists is on (EXPERIMENT
+        /// kit3 / 2a); the document-local part is always re-read. Off ⇒ identical to baseline.
         /// </summary>
         private IReadOnlyList<string> BuildAssetNameList(Document doc, bool forMaterial)
         {
+            var docLocal = BuildDocLocalAssetNames(doc, forMaterial);
+            var global   = GetGlobalLibraryAssetNames(forMaterial);
+            var merged   = MergeAssetNames(docLocal, global);
+            return merged.Count == 0 ? null : merged;
+        }
+
+        /// <summary>Property names tried in order — Inventor 2021+ uses "MaterialAssets"/"AppearanceAssets".</summary>
+        private static string[] AssetProps(bool forMaterial) => forMaterial
+            ? new[] { "MaterialAssets",  "Materials"   }
+            : new[] { "AppearanceAssets", "Appearances" };
+
+        /// <summary>Asset names already present in the document itself — cheap, always re-read.</summary>
+        private IReadOnlyList<string> BuildDocLocalAssetNames(Document doc, bool forMaterial)
+        {
+            if (doc == null) return null;
             var seen  = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var names = new List<string>();
+            foreach (string prop in AssetProps(forMaterial))
+                if (TryEnumerateAssets(doc, prop, seen, names)) break;
+            return names;
+        }
 
-            // Property names tried in order — Inventor 2021+ uses "MaterialAssets"/"AppearanceAssets".
-            string[] props = forMaterial
-                ? new[] { "MaterialAssets",  "Materials"   }
-                : new[] { "AppearanceAssets", "Appearances" };
-
-            // 1. Try the document object directly (gives materials already in this file).
-            if (doc != null)
+        /// <summary>
+        /// Asset names from the active material/appearance library — the application-global,
+        /// expensive COM walk. When CacheAssetLists is on it is read once per panel session and
+        /// reused on every later build (EXPERIMENT kit3 / 2a); when off it is rebuilt every call
+        /// (== baseline). Survives InvalidateCache() by design (libraries don't change on writes).
+        /// </summary>
+        private IReadOnlyList<string> GetGlobalLibraryAssetNames(bool forMaterial)
+        {
+            if (CacheAssetLists)
             {
-                foreach (string prop in props)
-                    if (TryEnumerateAssets(doc, prop, seen, names)) break;
+                if (forMaterial  && _matLibCached) return _cachedMatLibNames;
+                if (!forMaterial && _appLibCached) return _cachedAppLibNames;
             }
 
-            // 2. Walk the active library — mirrors Inventor's material/appearance picker.
-            if (_app != null)
-            {
-                try
-                {
-                    AssetLibrary activeLib = forMaterial
-                        ? _app.ActiveMaterialLibrary
-                        : _app.ActiveAppearanceLibrary;
-                    if (activeLib != null)
-                    {
-                        foreach (string prop in props)
-                            if (TryEnumerateAssets(activeLib, prop, seen, names)) break;
-                    }
-                }
-                catch { }
-            }
+            IReadOnlyList<string> names = BuildGlobalLibraryAssetNames(forMaterial);
 
-            if (names.Count == 0) return null;
+            if (CacheAssetLists)
+            {
+                if (forMaterial) { _cachedMatLibNames = names; _matLibCached = true; }
+                else             { _cachedAppLibNames = names; _appLibCached = true; }
+            }
+            return names;
+        }
+
+        /// <summary>Walks the active library — mirrors Inventor's material/appearance picker.</summary>
+        private IReadOnlyList<string> BuildGlobalLibraryAssetNames(bool forMaterial)
+        {
+            if (_app == null) return null;
+            var seen  = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var names = new List<string>();
+            try
+            {
+                AssetLibrary activeLib = forMaterial
+                    ? _app.ActiveMaterialLibrary
+                    : _app.ActiveAppearanceLibrary;
+                if (activeLib != null)
+                    foreach (string prop in AssetProps(forMaterial))
+                        if (TryEnumerateAssets(activeLib, prop, seen, names)) break;
+            }
+            catch { }
+            return names;
+        }
+
+        /// <summary>
+        /// Merges document-local and global-library asset names: document entries first (they win
+        /// case-insensitive collisions), then any new library entries, then sorted OrdinalIgnoreCase.
+        /// Pure and unit-tested — reproduces the pre-split single-pass result exactly.
+        /// </summary>
+        internal static List<string> MergeAssetNames(IReadOnlyList<string> docLocal,
+                                                     IReadOnlyList<string> global)
+        {
+            var seen  = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var names = new List<string>();
+            if (docLocal != null)
+                foreach (var n in docLocal) if (n != null && seen.Add(n)) names.Add(n);
+            if (global != null)
+                foreach (var n in global) if (n != null && seen.Add(n)) names.Add(n);
             names.Sort(StringComparer.OrdinalIgnoreCase);
             return names;
         }
@@ -476,6 +597,159 @@ namespace CheckupAddIn.Services
         /// </summary>
         public string ResolveFieldValue(string fieldKey, Document doc)
             => ResolveFieldValueWithCycleGuard(fieldKey, doc, null);
+
+        /// <summary>
+        /// Reads all given field keys from the document in a single pass per PropertySet.
+        /// Returns a dictionary fieldKey→value. SPECIAL:LOGIC: keys are followed to their terminal
+        /// key first. Keys that cannot be resolved get PropertyReader.NotAvailable.
+        /// Opens each PropertySet once for all rows — avoids N separate COM opens per PropertySet.
+        /// </summary>
+        public Dictionary<string, string> BatchReadValues(Document doc, IEnumerable<string> fieldKeys)
+        {
+            var result = new Dictionary<string, string>(StringComparer.Ordinal);
+            if (doc == null) return result;
+
+            var udefProps    = new List<(string origKey, string propName)>();
+            var ipropBySet   = new Dictionary<string, List<(string origKey, string propName)>>(StringComparer.OrdinalIgnoreCase);
+            var ipropShort   = new List<(string origKey, string propName)>();
+            var paramUser    = new List<(string origKey, string paramName)>();
+            var paramModel   = new List<(string origKey, string paramName)>();
+            var docKeys      = new List<(string origKey, string docTag)>();
+
+            foreach (string rawKey in fieldKeys)
+            {
+                if (string.IsNullOrEmpty(rawKey)) { result[rawKey] = ""; continue; }
+
+                // Resolve SPECIAL:LOGIC: → terminal field key (cheap: CapStore dict lookup)
+                string fk = rawKey;
+                if (rawKey.StartsWith("SPECIAL:LOGIC:", StringComparison.Ordinal))
+                {
+                    string terminal = ResolveTerminalFieldKey(rawKey);
+                    if (terminal == null) { result[rawKey] = ""; continue; }
+                    fk = terminal;
+                    // Store a forwarding sentinel — filled after terminal key is resolved
+                    if (!result.ContainsKey(rawKey)) result[rawKey] = null;
+                }
+
+                if (fk.StartsWith("UDEF:", StringComparison.Ordinal))
+                    udefProps.Add((rawKey, fk["UDEF:".Length..]));
+                else if (fk.StartsWith("IPROP|", StringComparison.Ordinal))
+                {
+                    var parts = fk.Split('|');
+                    if (parts.Length >= 3)
+                    {
+                        if (!ipropBySet.TryGetValue(parts[1], out var list))
+                            ipropBySet[parts[1]] = list = new List<(string, string)>();
+                        list.Add((rawKey, parts[2]));
+                    }
+                    else if (parts.Length == 2)
+                        ipropShort.Add((rawKey, parts[1]));
+                }
+                else if (fk.StartsWith("PARAM:User:", StringComparison.Ordinal))
+                    paramUser.Add((rawKey, fk["PARAM:User:".Length..]));
+                else if (fk.StartsWith("PARAM:Model:", StringComparison.Ordinal))
+                    paramModel.Add((rawKey, fk["PARAM:Model:".Length..]));
+                else if (fk.StartsWith("DOC:", StringComparison.Ordinal))
+                    docKeys.Add((rawKey, fk["DOC:".Length..]));
+                else
+                    result[rawKey] = PropertyReader.NotAvailable;
+            }
+
+            // UDEF — open UserDefined PropertySet once, read all needed properties
+            if (udefProps.Count > 0)
+            {
+                PropertySet udefPs = null;
+                foreach (var candidate in PropertyReader.UserDefinedSetCandidates)
+                    try { udefPs = doc.PropertySets[candidate]; if (udefPs != null) break; } catch { }
+
+                foreach (var (origKey, propName) in udefProps)
+                {
+                    string v = PropertyReader.NotAvailable;
+                    if (udefPs != null)
+                        try { var p = udefPs[propName]; v = p?.Value?.ToString() ?? ""; } catch { }
+                    result[origKey] = v;
+                }
+            }
+
+            // IPROP — open each named PropertySet once, read all props for that set
+            foreach (var kv in ipropBySet)
+            {
+                string setName = kv.Key;
+                var    props   = kv.Value;
+                PropertySet ps = null;
+                foreach (var candidate in GetSetNameCandidates(setName))
+                    try { ps = doc.PropertySets[candidate]; if (ps != null) break; } catch { }
+
+                foreach (var (origKey, propName) in props)
+                {
+                    string v = PropertyReader.NotAvailable;
+                    if (ps != null)
+                        try { var p = ps[propName]; if (p != null) v = p.Value?.ToString() ?? PropertyReader.NotAvailable; } catch { }
+                    // Language-fallback: key was stored in a different locale than current install
+                    if (v == PropertyReader.NotAvailable)
+                        v = _propReader.ReadStandardPropertyByName(doc, propName);
+                    result[origKey] = v;
+                }
+            }
+
+            // IPROP short-form (2-part): must scan all standard property sets by prop name
+            foreach (var (origKey, propName) in ipropShort)
+                result[origKey] = _propReader.ReadStandardPropertyByName(doc, propName);
+
+            // PARAM — get Parameters object once, read all user + model params
+            if (paramUser.Count > 0 || paramModel.Count > 0)
+            {
+                var parameters = PropertyReader.GetParameters(doc);
+
+                foreach (var (origKey, paramName) in paramUser)
+                {
+                    string v = PropertyReader.NotAvailable;
+                    if (parameters != null)
+                        try
+                        {
+                            var up  = parameters.UserParameters[paramName];
+                            object val = up.Value;
+                            v = val is string s
+                                ? (string.IsNullOrEmpty(s) ? PropertyReader.NotAvailable : s)
+                                : PropertyReader.FormatParameterValue(doc, Convert.ToDouble(val), up.get_Units());
+                        }
+                        catch { }
+                    result[origKey] = v;
+                }
+
+                foreach (var (origKey, paramName) in paramModel)
+                {
+                    string v = PropertyReader.NotAvailable;
+                    if (parameters != null)
+                        try
+                        {
+                            var mp  = parameters.ModelParameters[paramName];
+                            object val = mp.Value;
+                            v = val is string s
+                                ? (string.IsNullOrEmpty(s) ? PropertyReader.NotAvailable : s)
+                                : PropertyReader.FormatParameterValue(doc, Convert.ToDouble(val), mp.get_Units());
+                        }
+                        catch { }
+                    result[origKey] = v;
+                }
+            }
+
+            // DOC — individual reads (no PropertySet, already cheap)
+            foreach (var (origKey, docTag) in docKeys)
+                result[origKey] = _propReader.ReadDocumentValue(doc, docTag);
+
+            // SPECIAL:LOGIC: forward — fill sentinel entries from their resolved terminal key value
+            foreach (string key in result.Keys.Where(k => k.StartsWith("SPECIAL:LOGIC:", StringComparison.Ordinal)).ToList())
+            {
+                if (result[key] != null) continue; // already set (shouldn't happen but guard it)
+                string terminal = ResolveTerminalFieldKey(key);
+                result[key] = terminal != null && result.TryGetValue(terminal, out string tv)
+                    ? tv ?? ""
+                    : "";
+            }
+
+            return result;
+        }
 
         private string ResolveFieldValueWithCycleGuard(string fieldKey, Document doc, HashSet<string> visitedLogicGroups)
         {

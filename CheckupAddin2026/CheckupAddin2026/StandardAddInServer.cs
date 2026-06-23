@@ -49,7 +49,6 @@ namespace CheckupAddIn
             _catalogStore    = CatalogStore.Load(addinDir, localDir);
             _capabilityStore = CapabilityStore.Load(addinDir, localDir);
             LanguageLoader.Detect(_app);
-            PerfLogger.Enabled = true; // EXPERIMENT BUILD ONLY (branch experiment/optimize) — never merge to main.
 
             try
             {
@@ -321,7 +320,10 @@ namespace CheckupAddIn
                 try { _checkupButton.OnExecute -= OnCheckupButtonClick; } catch { }
                 _checkupButton = null;
             }
-            _app = null;
+            _app             = null;
+            _userSettings    = null;
+            _catalogStore    = null;
+            _capabilityStore = null;
 
             // Force release of COM references — without this, Inventor can hang on shutdown
             // because the CLR garbage collector does not run before Inventor unloads the AppDomain.

@@ -17,7 +17,7 @@ namespace CheckupAddIn.Services
 
         // Inventor localises PropertySet names — the same set has different internal names in
         // English vs. German installations. All known variants are tried in order.
-        private static readonly string[] UserDefinedSetCandidates =
+        internal static readonly string[] UserDefinedSetCandidates =
         {
             "Inventor User Defined Properties",
             "Inventor benutzerdefinierte Eigenschaften",
@@ -338,7 +338,7 @@ namespace CheckupAddIn.Services
             return NotAvailable;
         }
 
-        private static Parameters GetParameters(Document doc)
+        internal static Parameters GetParameters(Document doc)
         {
             try
             {
@@ -354,7 +354,7 @@ namespace CheckupAddIn.Services
         // Parameter.Value is in internal database units (cm/radians). GetStringFromValue converts
         // it to the parameter's own units honouring document precision; we append the unit token
         // when the formatted result is a bare number so length/angle rows read like "120 mm".
-        private static string FormatParameterValue(Document doc, double value, object units)
+        internal static string FormatParameterValue(Document doc, double value, object units)
         {
             // Parameter.Units is a COM dual-accessor (get_Units) returning the unit token as text.
             string unitStr = units?.ToString() ?? "";

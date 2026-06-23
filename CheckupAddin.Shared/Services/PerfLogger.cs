@@ -75,6 +75,23 @@ namespace CheckupAddIn.Services
             Write(line);
         }
 
+        /// <summary>
+        /// EXPERIMENT (kit3+4) diagnostic: logs one line per real catalog build, splitting Cat= cost:
+        ///   Assets= — asset-library walks (kit3 cached).
+        ///   Struct= — PropertySet + Parameter COM walk (kit4 cached); shows "  HIT" when cache served it.
+        ///   Rest=   — everything else (docFields + logic sets + sort).
+        /// Fires only on a GetCatalog miss regardless of OPT toggle.
+        /// </summary>
+        public static void LogCatalogBuild(long assetMs, long structMs, long restMs,
+                                           bool structHit, string docName)
+        {
+            if (!Enabled) return;
+            string structField = structHit ? "  HIT" : $"{structMs,3}ms";
+            Write($"[{DateTime.Now:HH:mm:ss.fff}]  CATBUILD  Assets={assetMs,3}ms  Struct={structField}" +
+                  $"  Rest={restMs,3}ms" +
+                  $"  | {(docName ?? "").Replace("\r", "").Replace("\n", " ")}");
+        }
+
         private static void Write(string line)
         {
             try
