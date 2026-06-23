@@ -283,7 +283,7 @@ namespace CheckupAddIn
                 };
 
                 _window.Show();
-                PerfLogger.LogOpen(_swOpen.ElapsedMilliseconds, PerfLogger.OptimizationsOn());
+                PerfLogger.LogOpen(_swOpen.ElapsedMilliseconds, true);
             }
             catch (Exception ex)
             {

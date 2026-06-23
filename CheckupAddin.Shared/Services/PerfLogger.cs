@@ -25,16 +25,6 @@ namespace CheckupAddIn.Services
         private static string LogPath =>
             _logPath ?? (_logPath = Path.Combine(Dir, "refresh_timing.txt"));
 
-        /// <summary>
-        /// EXPERIMENT toggle (branch experiment/optimize): optimizations are ON when a file
-        /// named "perf_opt.on" exists next to the DLL. Lets the tester capture before/after
-        /// in a single Inventor session by creating/deleting that file (effect on next refresh).
-        /// </summary>
-        public static bool OptimizationsOn()
-        {
-            try { return File.Exists(Path.Combine(Dir, "perf_opt.on")); }
-            catch { return false; }
-        }
 
         /// <summary>Logs window-open latency (ribbon click → window shown), in milliseconds.</summary>
         public static void LogOpen(long ms, bool optOn)

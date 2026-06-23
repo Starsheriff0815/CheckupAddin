@@ -69,7 +69,7 @@ namespace CheckupAddIn.ViewModels
         private const int                IDLE_STOP_AFTER_TICKS = 4;       // 4 × 15 s = 60 s
         // ▲▲▲ ─────────────────────────────────────────────────────────────────────────────── ▲▲▲
         private int                      _noChangeTicks  = 0;
-        // ── EXPERIMENT (kit2): refresh value cache — eliminates COM reads on unchanged-assembly ticks ──
+        // Refresh value cache — skips all COM reads on unchanged-assembly ticks (doc-set signature match).
         private bool                                _refreshCacheInvalid    = true;
         private string                              _refreshCacheSig        = "";
         private readonly Dictionary<string, string> _refreshValueCache      = new(StringComparer.Ordinal);
@@ -1139,12 +1139,8 @@ namespace CheckupAddIn.ViewModels
         {
             var _sw = Stopwatch.StartNew();
 
-            RowModel.GuardUnchangedSetters         = true;
-            _catalogBuilder.CacheAssetLists        = true;
-            _catalogBuilder.CachePropertyStructure = true;
-            _catalogBuilder.BatchValueReads        = true;
-            RowModel.DisplayValueSetTotal          = 0;
-            RowModel.DisplayValueSetChanged        = 0;
+            RowModel.DisplayValueSetTotal   = 0;
+            RowModel.DisplayValueSetChanged = 0;
 
             _selectedDocs = _docResolver.GetAllSelectedDocuments(out bool isMulti, out bool isAssemblyFallback, out _instanceCounts, out _subAsmGroups);
             IsMultiSelection = isMulti;

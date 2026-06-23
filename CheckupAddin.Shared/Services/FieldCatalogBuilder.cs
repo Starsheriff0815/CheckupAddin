@@ -28,36 +28,19 @@ namespace CheckupAddIn.Services
         private string _cachedDocPath = "";
         private List<FieldItem> _cachedCatalog;
 
-        // ── EXPERIMENT (kit3 / P1-2a): application-global asset-library cache ──
-        // The active material/appearance library asset names are app-wide (identical for every
-        // document) and do NOT change when an iProperty/parameter value is written, yet the
-        // current code re-walks them on every catalog build — including every value-edit rebuild
-        // (InvalidateCache fires on writes). Caching them here skips that COM walk on all builds
-        // after the first in a panel session. Survives InvalidateCache() by design; the
-        // FieldCatalogBuilder is recreated on each panel open, which bounds staleness to one
-        // session. Gated by CacheAssetLists (set from the perf_opt.on toggle) so OFF == baseline.
-        public bool CacheAssetLists;                       // set from _optOn in DoRefreshCore
-        private IReadOnlyList<string> _cachedMatLibNames;  // active material library asset names
-        private IReadOnlyList<string> _cachedAppLibNames;  // active appearance library asset names
-        private bool _matLibCached;                        // distinguishes "cached as null" from "not cached"
+        // Asset-library cache: material/appearance names are app-wide and don't change on value
+        // writes, so we cache them for the panel session and skip the COM walk on rebuilds.
+        // Staleness bound: one panel session (FieldCatalogBuilder is recreated on each window open).
+        private IReadOnlyList<string> _cachedMatLibNames;
+        private IReadOnlyList<string> _cachedAppLibNames;
+        private bool _matLibCached;
         private bool _appLibCached;
 
-        // ── EXPERIMENT (kit4 / P1-2b): PropertySet + Parameter structure cache ──
-        // iProperty names and parameter names for a document do not change when a value is
-        // written, yet InvalidateCache() forces a full COM walk on every post-write rebuild.
-        // This cache holds the IPROP/UDEF/PARAM FieldItems per document path and survives
-        // InvalidateCache(), bounding staleness to one doc visit (cleared on next doc-switch).
-        // Gated by CachePropertyStructure so OFF == baseline.
-        public bool CachePropertyStructure;
+        // PropertySet + Parameter structure cache: iProperty/parameter names don't change when a
+        // value is written, yet InvalidateCache() would otherwise force a full COM walk on every
+        // post-write rebuild. Cached per document path; cleared on doc-switch.
         private string _cachedPropStructPath = "";
         private List<FieldItem> _cachedPropStructItems;
-
-        // ── EXPERIMENT (kit5 / P1-3): batch PropertySet reads ──
-        // ResolveFieldValue opens the same PropertySet once per row per refresh cycle. With 25
-        // rows sharing the same PropertySet, that is 25 COM open calls instead of 1. BatchReadValues
-        // groups keys by PropertySet, opens each set once, then reads all needed properties in one
-        // pass. Gated by BatchValueReads so OFF == baseline (individual ResolveFieldValue calls).
-        public bool BatchValueReads;
 
         public FieldCatalogBuilder(Inventor.Application app = null, CapabilityStore capStore = null)
         {
@@ -190,15 +173,13 @@ namespace CheckupAddIn.Services
                 return items;
             }
 
-            // ── PropertySet + Parameter structure (EXPERIMENT kit4 / 2b: cached per doc path) ──
-            // iProperty and parameter names do not change when a value is written; caching them
-            // here lets post-write rebuilds skip the COM walk entirely.
+            // PropertySet + Parameter structure cache: names don't change on value writes;
+            // cached per doc path so post-write rebuilds skip the COM walk entirely.
             bool _structHit = false;
             long _structMs  = 0;
             List<FieldItem> structItems;
 
-            if (CachePropertyStructure && docPath != "" && docPath == _cachedPropStructPath
-                && _cachedPropStructItems != null)
+            if (docPath != "" && docPath == _cachedPropStructPath && _cachedPropStructItems != null)
             {
                 structItems = _cachedPropStructItems;
                 _structHit  = true;
@@ -208,7 +189,7 @@ namespace CheckupAddIn.Services
                 var _swStruct = Stopwatch.StartNew();
                 structItems = BuildStructureItems(doc);
                 _structMs   = _swStruct.ElapsedMilliseconds;
-                if (CachePropertyStructure && docPath != "")
+                if (docPath != "")
                 {
                     _cachedPropStructPath  = docPath;
                     _cachedPropStructItems = structItems;
@@ -252,7 +233,7 @@ namespace CheckupAddIn.Services
         /// <summary>
         /// Walks the document's PropertySets and Parameters via COM and returns the resulting
         /// FieldItems (IPROP / UDEF / PARAM). Extracted from BuildCatalog so the result can be
-        /// cached per document path by the Kit4 structural cache (see CachePropertyStructure).
+        /// cached per document path (cleared on doc-switch; survives InvalidateCache()).
         /// Uses a HashSet for O(1) dedup instead of the prior O(n) items.Any() scan.
         /// </summary>
         private List<FieldItem> BuildStructureItems(Document doc)
@@ -423,8 +404,8 @@ namespace CheckupAddIn.Services
         /// Enumerates asset names (materials or appearances) visible for <paramref name="doc"/>:
         /// the union of the document's own assets and the active library's assets, deduplicated
         /// (OrdinalIgnoreCase, document entries winning) and sorted. Returns null if nothing found.
-        /// The expensive active-library walk is cached when CacheAssetLists is on (EXPERIMENT
-        /// kit3 / 2a); the document-local part is always re-read. Off ⇒ identical to baseline.
+        /// The active-library walk is cached per panel session; the document-local part is always
+        /// re-read (cheap). Returns null if nothing found.
         /// </summary>
         private IReadOnlyList<string> BuildAssetNameList(Document doc, bool forMaterial)
         {
@@ -451,26 +432,19 @@ namespace CheckupAddIn.Services
         }
 
         /// <summary>
-        /// Asset names from the active material/appearance library — the application-global,
-        /// expensive COM walk. When CacheAssetLists is on it is read once per panel session and
-        /// reused on every later build (EXPERIMENT kit3 / 2a); when off it is rebuilt every call
-        /// (== baseline). Survives InvalidateCache() by design (libraries don't change on writes).
+        /// Asset names from the active material/appearance library — read once per panel session
+        /// and cached; reused on every subsequent build. Survives InvalidateCache() by design
+        /// (libraries don't change on value writes).
         /// </summary>
         private IReadOnlyList<string> GetGlobalLibraryAssetNames(bool forMaterial)
         {
-            if (CacheAssetLists)
-            {
-                if (forMaterial  && _matLibCached) return _cachedMatLibNames;
-                if (!forMaterial && _appLibCached) return _cachedAppLibNames;
-            }
+            if (forMaterial  && _matLibCached) return _cachedMatLibNames;
+            if (!forMaterial && _appLibCached) return _cachedAppLibNames;
 
             IReadOnlyList<string> names = BuildGlobalLibraryAssetNames(forMaterial);
 
-            if (CacheAssetLists)
-            {
-                if (forMaterial) { _cachedMatLibNames = names; _matLibCached = true; }
-                else             { _cachedAppLibNames = names; _appLibCached = true; }
-            }
+            if (forMaterial) { _cachedMatLibNames = names; _matLibCached = true; }
+            else             { _cachedAppLibNames = names; _appLibCached = true; }
             return names;
         }
 

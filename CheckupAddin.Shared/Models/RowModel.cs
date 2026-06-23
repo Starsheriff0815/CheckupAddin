@@ -52,12 +52,6 @@ namespace CheckupAddIn.Models
         private bool _isFormulaEditing;
         private bool _isFormulaInvalid;
 
-        // ── EXPERIMENT (branch experiment/optimize) — flicker fix toggle ──────────────
-        // When true, value/visual setters below suppress no-op PropertyChanged raises so the
-        // periodic auto-update only repaints rows whose value actually changed (kills flicker).
-        // Toggled per refresh from the perf_opt.on flag via PerfLogger.OptimizationsOn().
-        // false ⇒ behaviour identical to baseline (always raise).
-        public static bool GuardUnchangedSetters;
         // Redraw metrics for one DoRefreshCore pass (CheckupViewModel resets these at its start):
         //   Total   = DisplayValue assignments attempted this pass
         //   Changed = of those, how many actually differed (the only ones that must repaint)
@@ -93,7 +87,7 @@ namespace CheckupAddIn.Models
             set
             {
                 string v = value ?? "";
-                if (GuardUnchangedSetters && string.Equals(_fieldLabel, v, StringComparison.Ordinal)) return;
+                if (string.Equals(_fieldLabel, v, StringComparison.Ordinal)) return;
                 _fieldLabel = v;
                 OnPropertyChanged();
             }
@@ -109,7 +103,7 @@ namespace CheckupAddIn.Models
                 DisplayValueSetTotal++;
                 bool changed = !string.Equals(_displayValue, v, StringComparison.Ordinal);
                 if (changed) DisplayValueSetChanged++;
-                if (GuardUnchangedSetters && !changed) return;
+                if (!changed) return;
                 _displayValue = v;
                 OnPropertyChanged();
             }
@@ -120,7 +114,7 @@ namespace CheckupAddIn.Models
             get => _valueForeground;
             set
             {
-                if (GuardUnchangedSetters && ReferenceEquals(_valueForeground, value)) return;
+                if (ReferenceEquals(_valueForeground, value)) return;
                 _valueForeground = value;
                 OnPropertyChanged();
             }
