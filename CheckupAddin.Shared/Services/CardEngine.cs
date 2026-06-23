@@ -338,7 +338,7 @@ namespace CheckupAddIn.Services
                 if (grpKey     != null) entry.Values.TryGetValue(grpKey,     out grp);
                 if (tabKey     != null) entry.Values.TryGetValue(tabKey,     out tab);
                 if (tstKey     != null) entry.Values.TryGetValue(tstKey,     out tst);
-                else                                                                tst = tab; // use TAB value as TST when no TST column
+                else                                                                tst = (tab ?? "").Split(',')[0].Trim(); // Task #40: first tab token (was whole TAB cell) when no TST column
                 if (gstKey     != null) entry.Values.TryGetValue(gstKey,     out gst);
                 if (srtKey     != null) entry.Values.TryGetValue(srtKey,     out srt);
 
@@ -436,11 +436,17 @@ namespace CheckupAddIn.Services
             var sorts = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var entry in catalog.Entries)
             {
-                if (!entry.Values.TryGetValue(tabKey, out string tab) || string.IsNullOrEmpty(tab)) continue;
-                if (seen.ContainsKey(tab)) continue;
-                seen[tab] = tab;
-                string tst = tstKey != null && entry.Values.TryGetValue(tstKey, out string tv) ? tv : tab;
-                sorts[tab] = tst;
+                if (!entry.Values.TryGetValue(tabKey, out string cell) || string.IsNullOrEmpty(cell)) continue;
+                string tstRaw = tstKey != null && entry.Values.TryGetValue(tstKey, out string tv) ? tv : null;
+                foreach (var tab in CatalogDropdownItem.SplitTabIds(cell))   // Task #40: one cell may list several tabs ("A, B")
+                {
+                    bool isNew = !seen.ContainsKey(tab);
+                    if (isNew) seen[tab] = tab;
+                    // An explicit TST (typically from a definition row) wins regardless of row order;
+                    // otherwise a freshly-seen tab falls back to sorting by its own name.
+                    if (!string.IsNullOrEmpty(tstRaw)) sorts[tab] = tstRaw;
+                    else if (isNew) sorts[tab] = tab;
+                }
             }
 
             return seen.Keys

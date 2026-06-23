@@ -125,7 +125,7 @@ namespace CheckupAddIn.Views
             _visibleItems.Clear();
             foreach (var item in _allItems)
             {
-                if (_activeTabId != "" && item.TabId != _activeTabId) continue;
+                if (_activeTabId != "" && !item.IsInTab(_activeTabId)) continue;   // Task #40: multi-tab membership
                 var vm = new PickerItemVm(item, OnItemToggled);
                 // Multi-select: pre-check items that are in the canonical selection set
                 if (_isMultiSelect && _selectedPriValuesSet.Contains(item.PriValue))

@@ -177,6 +177,11 @@ The numbers below correspond to the markers on the screenshot:
    the network path. When a shared catalog is newer than your local copy, Checkup
    offers an "Update" button.
    <!-- optional clip → ![Catalog lock workflow](images/catalog-lock.gif) -->
+5. **Picker tabs and multi-tab values** — Give a column the **TAB** role and each
+   unique value becomes a tab in the picker dialog. To list the same row under more
+   than one tab, put several tab names in a single cell separated by commas
+   (e.g. `Profiles, Brackets`) — the entry then appears under each of those tabs.
+   <!-- optional clip → ![Multi-tab picker](images/picker-multi-tab.gif) -->
 
 ---
 

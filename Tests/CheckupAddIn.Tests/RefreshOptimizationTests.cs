@@ -19,7 +19,7 @@ namespace CheckupAddIn.Tests
         [Fact]
         public void Kit1_GuardedSetter_SuppressesNotification_WhenValueUnchanged()
         {
-            RowModel.GuardUnchangedSetters = true;
+            // Guard is unconditional since T39 un-gating (the GuardUnchangedSetters toggle was removed).
             var row = new RowModel { DisplayValue = "hello" };
             RowModel.DisplayValueSetTotal   = 0; // reset after setup so only the test call is counted
             RowModel.DisplayValueSetChanged = 0;
@@ -36,7 +36,6 @@ namespace CheckupAddIn.Tests
         [Fact]
         public void Kit1_GuardedSetter_AllowsNotification_WhenValueChanges()
         {
-            RowModel.GuardUnchangedSetters = true;
             var row = new RowModel { DisplayValue = "hello" };
             RowModel.DisplayValueSetTotal   = 0;
             RowModel.DisplayValueSetChanged = 0;
@@ -51,16 +50,22 @@ namespace CheckupAddIn.Tests
         }
 
         [Fact]
-        public void Kit1_Baseline_Unguarded_AlwaysRaisesNotification()
+        public void Kit1_UnconditionalGuard_CountsAttemptsButSuppressesUnchangedRepaints()
         {
-            RowModel.GuardUnchangedSetters = false;
+            // T39 shipped the guard unconditionally (no toggle): repeated same-value sets are counted
+            // in Total but never repaint and never raise PropertyChanged.
             var row = new RowModel { DisplayValue = "hello" };
+            RowModel.DisplayValueSetTotal   = 0;
+            RowModel.DisplayValueSetChanged = 0;
             int notified = 0;
             row.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(RowModel.DisplayValue)) notified++; };
 
-            row.DisplayValue = "hello"; // no guard → notification fires even for same value
+            row.DisplayValue = "hello"; // same
+            row.DisplayValue = "hello"; // same again
 
-            Assert.Equal(1, notified);
+            Assert.Equal(0, notified);
+            Assert.Equal(2, RowModel.DisplayValueSetTotal);
+            Assert.Equal(0, RowModel.DisplayValueSetChanged);
         }
 
         // ── Kit #2: BuildDocSignature ─────────────────────────────────────────────

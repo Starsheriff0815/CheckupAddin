@@ -821,8 +821,8 @@ A collapsible bar that slides in directly above the DataGrid column headers (wit
 | —     | None             | No role; helper column or internal identifier                                      |
 | PRI   | PrimaryDisplay   | Short form (field 1) — the value written to the target field on selection          |
 | SEC   | SecondaryDisplay | Long form (field 2) — shown as secondary text in picker; written by Sync card      |
-| TAB   | TabId            | Tab identifier — each unique value becomes a tab in the picker window              |
-| GRP   | GroupId          | Tab title — human-readable label for the tab                                       |
+| TAB   | TabId            | Tab identifier — each unique value becomes a tab. A comma-separated cell = **multi-tab membership** (Task #40, planned): a row listing `A, B` appears under both tabs. |
+| GRP   | GroupId          | **Sub-group header within a tab** — entries sharing a GRP value are grouped under a header inside the tab's item list. (NOT the tab title — corrected 2026-06-23.) |
 | SRT   | SortKey          | Sorts entries within a group; multiple columns → SRT1, SRT2…                       |
 | GST   | GroupSortKey     | Sorts groups within a tab; multiple → GST1, GST2…                                  |
 | TST   | TabSortKey       | Sorts tabs in the picker; multiple → TST1, TST2…                                   |
@@ -1309,6 +1309,8 @@ Applies to all add-in windows: **CheckupWindow**, **CatalogBuilderWindow**, **Ca
 **Multi-select mode:** Checkbox per item; selection state stored in `_selectedPriValuesSet` (canonical across tab switches). OK always enabled. Returns `SelectedPriValues` in catalog order.
 
 **Tab switch behavior:** Rebuilds visible items from `_allItems` filtered by the active tab. In multi-select mode, previously checked items are re-applied via `_selectedPriValuesSet` so selections survive tab switches.
+
+**Multi-tab membership (Task #40 — planned, not yet implemented):** A value row may belong to several tabs by listing comma-separated tab names in its TAB-role cell; the picker splits on comma and lists the row under each named tab (the item filter becomes `item.TabIds.Contains(activeTab)`). Single-value cells are unaffected — the feature is opt-in and backward-compatible. Full design in §10.1.
 
 **Size persistence:** Window size saved to / restored from registry via `UiStateStore.TryLoadCatalogPickerSize` / `SaveCatalogPickerSize`. Default: 480 × 520 px.
 
@@ -1887,6 +1889,33 @@ Agreed terms — use these in all conversations to avoid ambiguity.
 | ID | Area | Description | Status |
 |----|------|-------------|--------|
 | T1 | 2026 | Vault Professional integration — `VAULT:` field key prefix; enumerate loaded add-ins; late-bind or reference `VaultInventorServer.dll`; add a `Services/VaultReader.cs`; add `VAULT:*` keys to `FieldCatalogBuilder`; non-Vault files show `—`. | Optional — deferred indefinitely. |
+| T40 | shared | Multi-tab catalog membership — one value row appears under several picker tabs (comma-separated tab names in the TAB cell). Design decided (names + definition rows). See §10.1. | **Planned** — TDD done; code + Test_Spezifik data migration pending. |
+
+### 10.1 Task #40 — Multi-tab catalog membership (planned)
+
+**Goal.** Let a single catalog value row appear under multiple tabs in the Catalog Picker Window. Restores a capability the legacy hardcoded Special Functions had, now in the CardEngine model. Opt-in and backward-compatible: a TAB cell with no comma behaves exactly as today.
+
+**Data model (decision D1 — "names + definition rows").**
+- **Data rows** carry, in the TAB-role (3) cell, a comma-separated list of the tab **names** the row belongs to (e.g. `BG ILKAsys, Pfosten`).
+- **Definition rows** (empty-PRI rows) declare each tab via `TAB = <name>` + `TST = <order>`; they fix the tab caption and left-to-right order. (A catalog may omit them — tabs then derive from the distinct names found in data rows, ordered first-seen.)
+- The tab **name is the identifier** — no code→label map. Constraint: a tab name may not contain a comma (the list delimiter).
+- Chosen over a "codes + label map" model — codes' only edge (comma-tolerant names + single-point rename) does not justify the extra label-resolution step.
+
+**Engine changes (3 runtime touch-points; the other 3 TabId consumers are unchanged):**
+- `CardEngine.GetPickerTabs` — split each TAB cell on comma; each trimmed token is a distinct tab (caption + TST order from its definition row).
+- `CardEngine.GetDropdownItems` + `CatalogDropdownItem` — store the split membership as a `TabIds` set (was a single `TabId` string).
+- `CatalogPickerWindow` item filter — `item.TabIds.Contains(activeTab)` instead of `item.TabId == activeTab`.
+- Unchanged: the tab-button identity logic (active/last-tab compare) stays single-valued and correct.
+
+**Role-multiplicity.** The change is confined to TabId parsing + the filter; it never touches `GetColumnKey` / `GetRoleKey` / `ParseRoleBadge`, so every other role — including multi-instance badges (`SEC2`, `SRT2`) — is unaffected. TabId is the sole exception: multi-membership is a comma list in the **single index-1** TabId column, not multiple TabId columns (those still resolve to index 1).
+
+**Backward compatibility.** A no-comma TAB cell yields one token, so `Contains` ≡ the old `==`; Demo and all existing single-tab catalogs are unchanged.
+
+**Tests (net8 + net48).** Single-tab regression (Demo); a row `"A,B"` appears under A and B but not C, and once under All; whitespace / duplicate tokens normalized; tab order follows definition-row TST.
+
+**Documentation (part of "done").** Ship doc updates WITH the feature, both directions: (a) **in-app** — the Catalog/Capabilities ℹ Info-window help via `InfoPanelBuilder`; (b) **public** — `docs/Getting-Started.md` (and README if the feature list changes). EN primary + DE.json parity.
+
+**Test_Spezifik migration (separate, one-time).** Translate each data row's legacy code CSV (`G1,G2…` in the Role-None `value_visibility_in_group_tab_id` column) into the tab names in the TAB column; keep the 9 header rows as definition rows; drop the visibility column + the `G1…G9` codes.
 
 ---
 
