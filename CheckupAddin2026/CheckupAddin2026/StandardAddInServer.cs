@@ -261,6 +261,7 @@ namespace CheckupAddIn
                 }
 
                 // Create new ViewModel and Window
+                var _swOpen = System.Diagnostics.Stopwatch.StartNew();
                 PerfLogger.LogSession("Checkup 2026 activated");
                 _viewModel = new CheckupViewModel(_app, _userSettings, _catalogStore, _capabilityStore);
                 _window = new CheckupWindow();
@@ -282,6 +283,7 @@ namespace CheckupAddIn
                 };
 
                 _window.Show();
+                PerfLogger.LogOpen(_swOpen.ElapsedMilliseconds, PerfLogger.OptimizationsOn());
             }
             catch (Exception ex)
             {
@@ -318,7 +320,10 @@ namespace CheckupAddIn
                 try { _checkupButton.OnExecute -= OnCheckupButtonClick; } catch { }
                 _checkupButton = null;
             }
-            _app = null;
+            _app             = null;
+            _userSettings    = null;
+            _catalogStore    = null;
+            _capabilityStore = null;
 
             // Force release of COM references — without this, Inventor can hang on shutdown
             // because the CLR garbage collector does not run before Inventor unloads the AppDomain.

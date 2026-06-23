@@ -17,19 +17,30 @@ namespace CheckupAddIn.Services
         private const long MaxFileSizeBytes = 2 * 1024 * 1024;
 
         private static string _logPath;
+        private static string _dir;
 
-        private static string LogPath
+        private static string Dir =>
+            _dir ?? (_dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? ".");
+
+        private static string LogPath =>
+            _logPath ?? (_logPath = Path.Combine(Dir, "refresh_timing.txt"));
+
+        /// <summary>
+        /// EXPERIMENT toggle (branch experiment/optimize): optimizations are ON when a file
+        /// named "perf_opt.on" exists next to the DLL. Lets the tester capture before/after
+        /// in a single Inventor session by creating/deleting that file (effect on next refresh).
+        /// </summary>
+        public static bool OptimizationsOn()
         {
-            get
-            {
-                if (_logPath == null)
-                {
-                    string dir = Path.GetDirectoryName(
-                        Assembly.GetExecutingAssembly().Location) ?? ".";
-                    _logPath = Path.Combine(dir, "refresh_timing.txt");
-                }
-                return _logPath;
-            }
+            try { return File.Exists(Path.Combine(Dir, "perf_opt.on")); }
+            catch { return false; }
+        }
+
+        /// <summary>Logs window-open latency (ribbon click → window shown), in milliseconds.</summary>
+        public static void LogOpen(long ms, bool optOn)
+        {
+            if (!Enabled) return;
+            Write($"[{DateTime.Now:HH:mm:ss.fff}]  OPEN={ms,4}ms  OPT={(optOn ? "ON " : "off")}");
         }
 
         /// <summary>Writes a session-start marker. Call once when the add-in activates.</summary>
@@ -45,18 +56,40 @@ namespace CheckupAddIn.Services
         /// </summary>
         public static void LogRefresh(long totalMs, long docResMs, long catalogMs,
                                       long rowsMs, long postPassMs,
-                                      int rowCount, string docName)
+                                      int rowCount, string docName,
+                                      bool optOn, long redrawChanged, long redrawTotal,
+                                      bool cacheHit = false)
         {
             if (!Enabled) return;
             string line =
                 $"[{DateTime.Now:HH:mm:ss.fff}]" +
+                $"  OPT={(optOn ? "ON " : "off")}" +
+                $"  {(cacheHit ? "CACHE=HIT" : "CACHE=---")}" +
                 $"  Total={totalMs,4}ms" +
                 $"  DocRes={docResMs,3}ms" +
                 $"  Cat={catalogMs,3}ms" +
                 $"  Rows({rowCount})={rowsMs,4}ms" +
                 $"  Post={postPassMs,3}ms" +
+                $"  Redraw={redrawChanged}/{redrawTotal}" +
                 $"  | {docName.Replace("\r", "").Replace("\n", " ")}";
             Write(line);
+        }
+
+        /// <summary>
+        /// EXPERIMENT (kit3+4) diagnostic: logs one line per real catalog build, splitting Cat= cost:
+        ///   Assets= — asset-library walks (kit3 cached).
+        ///   Struct= — PropertySet + Parameter COM walk (kit4 cached); shows "  HIT" when cache served it.
+        ///   Rest=   — everything else (docFields + logic sets + sort).
+        /// Fires only on a GetCatalog miss regardless of OPT toggle.
+        /// </summary>
+        public static void LogCatalogBuild(long assetMs, long structMs, long restMs,
+                                           bool structHit, string docName)
+        {
+            if (!Enabled) return;
+            string structField = structHit ? "  HIT" : $"{structMs,3}ms";
+            Write($"[{DateTime.Now:HH:mm:ss.fff}]  CATBUILD  Assets={assetMs,3}ms  Struct={structField}" +
+                  $"  Rest={restMs,3}ms" +
+                  $"  | {(docName ?? "").Replace("\r", "").Replace("\n", " ")}");
         }
 
         private static void Write(string line)

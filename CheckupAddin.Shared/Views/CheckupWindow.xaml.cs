@@ -1004,6 +1004,7 @@ namespace CheckupAddIn.Views
             UiStateStore.SaveWindowSize(Width, Height);
             _vm?.UnsubscribeFromInventorEvents();
             DataContext = null;
+            _vm = null;
             base.OnClosing(e);
         }
 

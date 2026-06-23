@@ -52,6 +52,18 @@ namespace CheckupAddIn.Models
         private bool _isFormulaEditing;
         private bool _isFormulaInvalid;
 
+        // ── EXPERIMENT (branch experiment/optimize) — flicker fix toggle ──────────────
+        // When true, value/visual setters below suppress no-op PropertyChanged raises so the
+        // periodic auto-update only repaints rows whose value actually changed (kills flicker).
+        // Toggled per refresh from the perf_opt.on flag via PerfLogger.OptimizationsOn().
+        // false ⇒ behaviour identical to baseline (always raise).
+        public static bool GuardUnchangedSetters;
+        // Redraw metrics for one DoRefreshCore pass (CheckupViewModel resets these at its start):
+        //   Total   = DisplayValue assignments attempted this pass
+        //   Changed = of those, how many actually differed (the only ones that must repaint)
+        public static long DisplayValueSetTotal;
+        public static long DisplayValueSetChanged;
+
         /// <summary>Field key — determines which Inventor value this row reads/writes (see FieldItem key conventions).</summary>
         public string FieldKey
         {
@@ -78,20 +90,40 @@ namespace CheckupAddIn.Models
         public string FieldLabel
         {
             get => _fieldLabel;
-            set { _fieldLabel = value ?? ""; OnPropertyChanged(); }
+            set
+            {
+                string v = value ?? "";
+                if (GuardUnchangedSetters && string.Equals(_fieldLabel, v, StringComparison.Ordinal)) return;
+                _fieldLabel = v;
+                OnPropertyChanged();
+            }
         }
 
         /// <summary>Current value read from Inventor, refreshed on every DoRefresh call.</summary>
         public string DisplayValue
         {
             get => _displayValue;
-            set { _displayValue = value ?? ""; OnPropertyChanged(); }
+            set
+            {
+                string v = value ?? "";
+                DisplayValueSetTotal++;
+                bool changed = !string.Equals(_displayValue, v, StringComparison.Ordinal);
+                if (changed) DisplayValueSetChanged++;
+                if (GuardUnchangedSetters && !changed) return;
+                _displayValue = v;
+                OnPropertyChanged();
+            }
         }
 
         public System.Windows.Media.Brush ValueForeground
         {
             get => _valueForeground;
-            set { _valueForeground = value; OnPropertyChanged(); }
+            set
+            {
+                if (GuardUnchangedSetters && ReferenceEquals(_valueForeground, value)) return;
+                _valueForeground = value;
+                OnPropertyChanged();
+            }
         }
 
         /// <summary>Currently selected item in the field-selector ComboBox (Col 2).</summary>
