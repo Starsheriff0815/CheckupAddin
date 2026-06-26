@@ -10,7 +10,7 @@
 		<RootNamespace>CheckupAddIn</RootNamespace>
 		<AssemblyName>CheckupAddIn</AssemblyName>
 		<GenerateAssemblyInfo>true</GenerateAssemblyInfo>
-		<Version>0.14.0</Version>
+		<Version>0.15.0</Version>
 		<Author>Norman Lindner</Author>
 		<Description>Checkup 2025 for Autodesk Inventor 2025</Description>
 		<OutputPath>bin\</OutputPath>

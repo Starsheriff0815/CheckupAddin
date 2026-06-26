@@ -2218,6 +2218,15 @@ The GPL-3.0 formally requires all linked libraries to be free software. `Autodes
 
 Public release history.
 
+### v0.15.0 — Compose card + Split Mode + generation-scoped SPEZIFIK pipeline + responsive card editor (2026-06-27)
+
+- **Compose card** (Task #41): a new general-purpose Logics-Constructor card. Longest-match split-lookup tokenizes a separator-less packed code against a catalog column and emits framed text (configurable per-item prefixes, collapse-when-equal, empty-output drop, max-items, on-unknown mode). The no-separator sibling of PairTransform. See §5.8.
+- **Compose Split Mode** (Task #42): six optional Compose params (`SourceSeparator`, `TokenOutputSeparator`, `ComposeFallbackCatalogId`, `OnDirectMatch`, `OutputMode`, `AppendSeparator`) let one card process a separator-delimited source where some tokens are direct catalog entries and others are packed sub-codes; multiple Compose cards can append into one companion field. See §5.8 + §10.2.
+- **Generation-scoped expansion + placing-order sort** (Task #43): a new catalog **Generation** column (blank = universal) plus a source-derived generation scope filter resolves same-code collisions between catalog generations; the assembled long form is sorted on `placing_order` and the short form is canonicalized. See §10.3.
+- **Multi-tab catalog membership** (Task #40): one catalog value row can appear under several picker tabs via comma-separated tab names in its TAB cell. See §10.1.
+- **Responsive Logics-Constructor card editor** (Task #44): card fields wrap to the available width with each label+field pair kept together; the companion-field picker shares the same flow; each card gets its own horizontal scrollbar below a width floor, while the outer view keeps scrolling the whole list vertically. See §5.8.
+- Engine unit tests grown to 104 (net8 + net48); build clean across all four variants.
+
 ### v0.13.2 — DesignHarness public + VS Shared Project restructure + multi-version manifest fix (2026-06-17)
 
 - **DesignHarness now public and shipped:** included in release bundles as `CheckupDesignHarness_<Tag>.zip`; packaged by `build_release.ps1` (default; opt-out with `-SkipHarness`). Requires .NET 8 Desktop Runtime + Inventor 2026 interop DLL from user's install. Source already in the public repo under `DesignHarness\`.
