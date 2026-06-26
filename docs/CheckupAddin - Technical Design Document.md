@@ -902,7 +902,7 @@ Groups are displayed in a single ordered list. Numbers are sequential 1…N top 
   | 7 | ▲▼⧉× horizontal bar | `Auto` | Collapsed state only |
 
   **Invariant:** Drag handle and Group Name are always leftmost; Expert/Remove/Target Field are always rightmost. The `Width="*"` on col 3 is the sole mechanism that achieves this — do not change it to `Auto` or a fixed `2*` ratio.
-- **Cards / Basic Logics list** below the header: one item per row (no own scrollbar — parent ScrollViewer handles it).
+- **Cards / Basic Logics list** below the header: one item per row. The list has no *vertical* scrollbar — the outer Capabilities `ScrollViewer` scrolls all groups vertically. **(T44)** each card editor area does have its own *horizontal* scrollbar, which appears only when the card is narrower than its field-area `MinWidth` floor; see the Card row layout + **Scrolling** notes below.
 - Items can be dragged within the group or to another group.
 
 > Groups, Cards, and Basic Logics are each individually collapsible.
@@ -915,7 +915,7 @@ Groups are displayed in a single ordered list. Numbers are sequential 1…N top 
 - Far right: **▲** · **▼** · **⧉** · **×** buttons (move up, move down, duplicate, remove) — **vertically stacked**.
 - Left edge: 4px colored accent strip (group's accent color).
 - Bottom-right: colored **type badge pill** (rounded corners, bold white text) — identifies the card/function type. Color per type via `CardTypeToBrushConverter`.
-- Center: **Enabled** checkbox + card-type-specific controls (see below).
+- Center: **Enabled** checkbox (`Dock=Left`, top-aligned) + the card's field area. **(T44)** the field area — all card-type-specific controls *and* the companion/partner field picker — is a single responsive `WrapPanel` that fills the space right of the checkbox: fields wrap to the available width, and each `label+field` pair is wrapped in its own non-breaking `StackPanel` so a label never separates from its control. Because the picker shares this one `WrapPanel`, the companion field wraps *below* the type fields when narrow instead of overflowing to the right. Horizontal-scroll / height behavior: see **Scrolling** below.
 
 **Card-type-specific controls:**
 
@@ -927,6 +927,7 @@ Groups are displayed in a single ordered list. Numbers are sequential 1…N top 
 | Sync              | CompanionRole · Companion Field ComboBox †                                               |
 | MultiPick         | PrimaryTokenSeparator · Companion Field † · CompanionRole · CompanionTokenSeparator      |
 | PairTransform     | SourceTokenSep · LookupRole · OutputRole · OutputTokenSep · Companion Field †            |
+| Compose           | Catalog picker · LookupRole · OutputRole · ItemPrefixes · ItemSeparator · CollapseWhenEqual · CollapsedPrefix · DropEmptyOutputs · MaxItems · OnUnknownToken · Companion Field † · *(Split Mode)* SourceSeparator · TokenOutputSeparator · ComposeFallbackCatalogId · OnDirectMatch · OutputMode · AppendSeparator |
 | PrefixSuffix      | Prefix text box · Suffix text box · Mode toggle (Add / Remove)                           |
 | Sort              | Catalog picker · LookupRole (default PRI) · TokenSeparator (default `"-"`) · Invert toggle |
 
@@ -934,6 +935,50 @@ Groups are displayed in a single ordered list. Numbers are sequential 1…N top 
 
 > **Note — CatalogBuilder card-editor configuration dropdowns** (CatalogId picker, SecRole, TooltipRole, CompanionRole, SearchRoles in the card editor panel) are **not** the same as the field-picker ComboBoxes above. They use theme-styled WPF ComboBoxes with `AllowsTransparency="True"` on the popup. SearchRoles is a plain TextBox (comma-separated roles). These are editor-time config controls; they are NOT subject to the §5.13 runtime value-entry spec.
 
+**Compose card behaviour (`CardEngine.BuildComposeValue` / `GetComposeWrites`).** The no-separator sibling of PairTransform: it expands a single field value that concatenates several catalog codes **with no delimiter** into framed text written to the Companion Field, on inline-edit Apply. PairTransform splits on a literal separator; Compose splits by **longest match** against the `LookupRole` column, so it handles mixed-length codes a fixed split cannot.
+
+Algorithm: (1) build the candidate set = distinct non-empty `LookupRole` values of the card's catalog; (2) walk the source left→right, at each position taking the **longest** candidate that prefixes the remainder (case-insensitive), bounded by `MaxItems` (0 = unlimited); (3) look up each code's `OutputRole`; (4) if `DropEmptyOutputs` (default true), drop codes whose output is empty; (5) frame — if `CollapseWhenEqual` and all codes are identical → `CollapsedPrefix + output`, else per item `ItemPrefixes[i] + output` joined by `ItemSeparator`; (6) write to `CompanionFieldKey`.
+
+`OnUnknownToken` governs input that does not fully tokenise: `skip` (default — use the codes parsed so far), `keepRaw` (write the source unchanged), `passthrough` (write nothing — leave the companion for manual entry). A code is bounded to the card's configured catalog/column, so cross-domain collisions cannot occur. All framing is parameterised, so domain-specific rules (e.g. a two-sided `D1/D2` material) are just one configuration — the card itself carries no domain knowledge.
+
+**Compose card — Split Mode (Task #42).** An optional extension to the Compose card that enables it to process separator-delimited source fields (e.g. SPEZIFIK1 `60-pur-g2g2-fngg`) where some tokens are direct catalog entries and others are packed sub-codes requiring sub-tokenization. Without Split Mode the base Compose card cannot process such fields because the separator character (`-`) is not a catalog code and halts `LongestMatchTokenize` at the first occurrence.
+
+Six new optional params (all absent = base Compose behaviour unchanged):
+
+| Param | Default | Meaning |
+|---|---|---|
+| `SourceSeparator` | (absent) | Enables Split Mode. Source field is split on this separator; each outer token is processed independently. |
+| `TokenOutputSeparator` | `, ` | Separator used to join per-token outputs in the result string. |
+| `ComposeFallbackCatalogId` | (same as card) | Catalog used for sub-tokenization. Use a domain-restricted sub-catalog to avoid longer-code collisions (e.g. Merkmal codes that share PRI values with feature stacks). |
+| `OnDirectMatch` | `include` | `include` — direct-match tokens contribute their SEC output (replaces PairTransform). `skip` — direct-match tokens are omitted; only sub-expanded tokens appear in the output. Use `skip` when PairTransform already handles direct matches and this card adds only sub-expansions. |
+| `OutputMode` | `replace` | `replace` — write result to CompanionFieldKey (normal). `append` — read the current CompanionFieldKey value; if non-empty prepend it with AppendSeparator; write the combined result. Allows multiple Compose cards to contribute to one companion field in sequence. |
+| `AppendSeparator` | `, ` | Separator inserted between the existing companion value and the new output when `OutputMode=append` and the companion is non-empty. |
+
+Split Mode algorithm for each outer token: (1) try a direct PRI→SEC lookup in the primary catalog; (2a) if found: `OnDirectMatch=include` → emit SEC, `skip` → omit; (2b) if not found: run `LongestMatchTokenize` against `ComposeFallbackCatalogId` (or primary catalog if absent); (3) apply existing Compose framing (ItemPrefixes, CollapseWhenEqual, DropEmptyOutputs, etc.) to the sub-codes; (4) `OnUnknownToken` governs tokens that fail sub-tokenization entirely. Collect all non-empty per-token outputs → join with `TokenOutputSeparator` → apply `OutputMode` before writing.
+
+**Typical two-card setup for SPEZIFIK1 → SPEZIFIK2 expansion (with material doubles and feature stacks):**
+
+Three cards in the SPECIAL:LOGIC: group, executed top-to-bottom:
+
+1. **PairTransform** (unchanged): splits SPEZIFIK1 on `-`; direct PRI→SEC lookup; writes SPEZIFIK2 = `ISO 100, PUR-Schaum, gelocht, …` (all direct-match tokens).
+2. **Material Compose** (`SourceSeparator="-"`, `OnDirectMatch=skip`, `OutputMode=append`, `ComposeFallbackCatalogId` = material-only sub-catalog, D1/D2 framing): for each SPEZIFIK1 token — skips direct matches (already in SPEZIFIK2); sub-tokenizes packed material codes (`g2g2`→`g2`+`g2`, `l5a1`→`l5`+`a1`, `hlzg2`→`hlz`+`g2`) against the material sub-catalog; applies D1/D2 framing; appends result to SPEZIFIK2.
+3. **Feature Compose** (`SourceSeparator="-"`, `OnDirectMatch=skip`, `OutputMode=append`, `ComposeFallbackCatalogId` = feature-combinations sub-catalog, comma-join framing): sub-tokenizes packed feature stacks against the feature-combinations sub-catalog (see below); appends result to SPEZIFIK2.
+
+**Feature-combinations sub-catalog.** The ILKAsys L-R and O-U feature axes share PRI codes (`fn`, `nf`, `ff`, `gg`, `nn`, …) with different SEC meanings per axis. A flat `LongestMatchTokenize` against a mixed L-R+O-U catalog always returns the first-matching axis for each 2-char code — producing wrong SEC values for the second positional slot. The correct approach is a **pre-computed feature-combinations catalog**: each used 4-char feature stack (`fnnn`, `fngg`, `ggnn`, `ffnn`, …) appears as a direct 4-char PRI entry whose SEC value is the correctly ordered combination of its L-R and O-U long forms (with empty O-U axis dropped). `LongestMatchTokenize` finds the 4-char entry as a whole-token match, bypassing any axis-ordering ambiguity. The catalog is a pure **adjustment** (no code change): derive entries from the Cartesian product of the 10 L-R × 10 O-U codes; skip combinations whose combined SEC is empty (`nnnn`); 100 entries maximum, typically far fewer in practice.
+
+**Capability sub-catalogs (adjustments, no rebuild):**
+- `001-test-spezifik-material-katalog` — Material (124) + Holz_Material (23) entries only; excludes all Merkmal/Blechkante categories to prevent longer-code sub-tokenization collisions.
+- `001-test-spezifik-feature-combos-katalog` — pre-computed 4-char feature stacks as direct PRI entries; SEC = L-R long + `, ` + O-U long (empty axis dropped); covers all combinations used in the real data.
+
+**Compose card editor — multi-row layout.** With Split Mode params the Compose card has more params than fit comfortably in a single horizontal row. The card editor panel therefore renders the Compose params as up to **3 explicit horizontal rows** inside a `StackPanel Orientation="Vertical"` (replacing the single flat `WrapPanel` from T41):
+
+| Row | Visibility | Controls |
+|---|---|---|
+| 1 | Always (Compose) | LookupRole · OutputRole · Companion Field picker |
+| 2 | Always (Compose) | ItemPrefixes · ItemSeparator · CollapseWhenEqual · CollapsedPrefix · DropEmptyOutputs · MaxItems · OnUnknownToken |
+| 3 | `IsComposeSplitMode` only | SourceSeparator · TokenOutputSeparator · ComposeFallbackCatalogId · OnDirectMatch · OutputMode · AppendSeparator |
+
+`IsComposeSplitMode` is a computed read-only property on the card's `CardItemViewModel`: `!string.IsNullOrEmpty(SourceSeparator)`. Row 3 is hidden when SourceSeparator is empty, so a base Compose card (no Split Mode) stays at 2 rows. These 3 rows are the explicit *logical* grouping of the Compose params. **(T44 update)** the original claim that "no other card types are affected" no longer holds: as of T44 *every* card type wraps its fields responsively (see Card row layout + Scrolling), and within every card — including each of these Compose rows — each `label+field` pair is wrapped in a non-breaking `StackPanel` so pairs never split across a wrap (the standalone Compose checkboxes stay as their own flow items).
 
 **Capabilities bottom bar** (always visible, below groups):
 
@@ -949,9 +994,10 @@ Groups are displayed in a single ordered list. Numbers are sequential 1…N top 
 
 **Scrolling — Capabilities view:**
 
-- Entire groups area is mouse-wheel scrollable.
+- Entire groups area is mouse-wheel scrollable — the outer `CapabilitiesScrollViewer` handles the wheel for the whole groups / cards / Basic-Logics list via `PreviewMouseWheel` (scrolls vertically and marks the event handled). Because cards have no vertical scroll of their own, the wheel over any card scrolls this outer list.
 - Vertical scrollbar: `Auto` (appears when groups overflow height).
-- Horizontal scrollbar: `Auto` — appears when window is too narrow to fit the group header row minimum (~440 px viewport). `Width="*"` on the group label column ensures stars distribute within the viewport when wide enough; when narrower the scrollbar takes over. Do **not** set `HorizontalScrollBarVisibility="Disabled"` — that silently clips content with no escape route.
+- Outer horizontal scrollbar: `Auto` — **kept** (do **not** set `HorizontalScrollBarVisibility="Disabled"` — that silently clips content). In practice it rarely engages now: each group is capped to the viewport width (group-root `MaxWidth` bound to the ScrollViewer `ViewportWidth`, `MinWidth="320"`) and each card bounds its own width (next bullet), so horizontal overflow is handled *per card* rather than by widening the whole groups area. The group header still relies on `Width="*"` on the group-label column to distribute space (see header invariant).
+- **(T44) Per-card responsive layout — Card editor area.** Each card's field area **wraps** to the available width. Mechanism: the field area lives in a per-card `ScrollViewer` (`VerticalScrollBarVisibility="Disabled"`, `HorizontalScrollBarVisibility="Auto"`) whose inner panel sets `Width="{Binding ViewportWidth, RelativeSource={RelativeSource AncestorType={x:Type ScrollViewer}}}"` together with `MinWidth="700"`. Effective width = `max(700, viewport)`: when the viewport is ≥ 700 px the panel wraps to the viewport (no horizontal scrollbar); once the viewport drops below 700 px the panel stops shrinking and the **card shows its own horizontal scrollbar**. `MinWidth` is therefore the single knob — it sets both the tallest wrapped height and the window width at which the per-card h-scrollbar appears. There is **no** per-card vertical scroll (the card grows to its wrapped height and the outer list scrolls). The type pill stays outside this scroll (card bottom); the card-collapse style is unaffected. Default window minimum is 600 px (§5.11), so at the smallest window the per-card scrollbar is engaged for content wider than ~510 px.
 
 **Basic Logics panel (far right, collapsible):**
 
@@ -975,7 +1021,7 @@ The Cards palette sits at the very bottom of the center content area, below the 
 
 | Row              | Visibility                  | Content                                                                                                                                           |
 |------------------|-----------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------|
-| 1 — Card buttons | Collapsible (folds UP)      | Horizontal WrapPanel of card-type buttons: **Button · Dropdown · Link · PairTransform · Prefix/Suffix · Search · MultiPick · Sort · Sync** (BasicLogic is NOT in this palette — its buttons live in the Basic Logics panel on the right) |
+| 1 — Card buttons | Collapsible (folds UP)      | Horizontal WrapPanel of card-type buttons: **Button · Dropdown · Link · PairTransform · Compose · Prefix/Suffix · Search · MultiPick · Sort · Sync** (BasicLogic is NOT in this palette — its buttons live in the Basic Logics panel on the right) |
 | 2 — Toggle strip | Always visible              | Full-width button: centered label "Cards" (SemiBold) + chevron on right edge; ∧ when collapsed, ∨ when expanded. Bound to `ToggleCardPanelCommand`. |
 | 3 — Toolbar      | Always visible              | Far left: **+ Add Group**. Far right: **ℹ · ▲ · ▼ · ⧉ · ×** (act on active Group/Card/Basic Logic — see bottom bar above).                                |
 
@@ -1071,6 +1117,7 @@ The guiding constraint is **versatility without complexity**: the system should 
 | BasicLogic    | `#C03928` (red)          | Stores one formula expression; evaluates on Apply with `{INPUT}`=typed value; result written to `Params["FormulaTargetFieldKey"]` or group's `TargetFieldKey`. Uses `FormulaEngine`. Stored as `CapabilityCard { Type = "BasicLogic" }` — no dedicated model class. Keys are case-sensitive — see note in Section 5.8.                                                                                                                                                                         |
 | MultiPick     | `#2980B9` (blue)         | Multi-token input mode with per-separator autocomplete from catalog                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | PairTransform | `#D35400` (burnt orange) | Splits the current field value into tokens by SourceTokenSeparator; looks up each token by LookupRole in the catalog; outputs the OutputRole value for each; joins results with OutputSep; writes to CompanionFieldKey. Fires on inline-edit Apply (not via picker).                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Compose       | `#1A7A8A` (teal-dark)    | Expands a packed field value (no separator) into framed text via longest-match sub-tokenization against a catalog column; writes to CompanionFieldKey. **Split Mode** (Task #42): when `SourceSeparator` is set, first splits the source on that separator, then applies direct-match lookup and/or sub-tokenization per token; supports `OutputMode=append` to accumulate outputs from multiple Compose cards into one companion field. Fires on inline-edit Apply. See §5.8 Compose card behaviour. |
 | PrefixSuffix  | `#7D3C98` (purple)       | Wraps the target field value with a static prefix and/or suffix. **Add mode** (default): strips prefix/suffix from stored value for display; prepends/appends on write; idempotent — skips if already present. **Remove mode** (inverted): strips prefix/suffix on both read and write. Bidirectional by design. No catalog required. Applies to the row's own target field only — use Sync to propagate to a companion field.                                                                                                                                                                                                                                                                                                                    |
 | Sort          | `#27AE60` (green)        | Splits the current target field value into tokens by TokenSeparator; looks up each token's sort key in the catalog via LookupRole; sorts by SRT1…SRTn in index order (multi-level); rejoins with TokenSeparator; writes result back to the target field. **Unknown tokens** (no catalog row matches): placed at end, relative order preserved, shown red via existing `IsMultiTokenMismatch` display. **Empty tokens** (`""`) treated as valid lookup values — if a catalog row has LookupRole=`""` and an SRT value, the empty token sorts at that SRT position (not as unknown); multiple empty-row matches resolved by CatalogIndex order. **Invert toggle**: reverses sort direction (default ascending). Fires on inline-edit Apply. Catalog required. |
 
@@ -1083,7 +1130,7 @@ Items (Cards and Basic Logics) execute in **top-to-bottom list order** — the s
 
 **Write gate for SPECIAL:LOGIC: rows (`isFormulaOnlyGroup` / `HasValueChanged`):**
 
-Groups that have at least one of **PairTransform, BasicLogic, or PrefixSuffix** card — and **no primary card** (Dropdown / Search / Button / MultiPick) — are classified as `isFormulaOnlyGroup = true` in `StartInlineEditCommand`. This sets `OriginalValue = null` (stored as `""`) when inline edit opens, which makes `HasValueChanged = (_editText != "")` immediately true once the user types anything. Apply is therefore always visible on entry. Groups that have a primary card set `OriginalValue = startText` (the current display value), so Apply only appears when the user actually changes the value. **Rule: any new card type that requires a write-through on Apply without a primary card must be added to the `isFormulaOnlyGroup` condition alongside PairTransform / BasicLogic / PrefixSuffix.**
+Groups that have at least one of **PairTransform, Compose, BasicLogic, or PrefixSuffix** card — and **no primary card** (Dropdown / Search / Button / MultiPick) — are classified as `isFormulaOnlyGroup = true` in `StartInlineEditCommand`. This sets `OriginalValue = null` (stored as `""`) when inline edit opens, which makes `HasValueChanged = (_editText != "")` immediately true once the user types anything. Apply is therefore always visible on entry. Groups that have a primary card set `OriginalValue = startText` (the current display value), so Apply only appears when the user actually changes the value. **Rule: any new card type that requires a write-through on Apply without a primary card must be added to the `isFormulaOnlyGroup` condition alongside PairTransform / BasicLogic / PrefixSuffix.**
 
 ---
 
@@ -1890,6 +1937,9 @@ Agreed terms — use these in all conversations to avoid ambiguity.
 |----|------|-------------|--------|
 | T1 | 2026 | Vault Professional integration — `VAULT:` field key prefix; enumerate loaded add-ins; late-bind or reference `VaultInventorServer.dll`; add a `Services/VaultReader.cs`; add `VAULT:*` keys to `FieldCatalogBuilder`; non-Vault files show `—`. | Optional — deferred indefinitely. |
 | T40 | shared | Multi-tab catalog membership — one value row appears under several picker tabs (comma-separated tab names in the TAB cell). Design decided (names + definition rows). See §10.1. | **Planned** — TDD done; code + Test_Spezifik data migration pending. |
+| T42 | shared | Compose Split Mode — expand packed material doubles and feature-axis stacks embedded inside a separator-delimited SPEZIFIK1 short form into a correct SPEZIFIK2 long form (D1/D2 material framing + positional feature-axis expansion). Extends the Compose card with 6 new params; requires two domain-specific sub-catalogs as adjustments. See §10.2. | **Code-complete + verified (Inventor 2026)** — commit deferred; folded with T43 to land the SPEZIFIK pipeline once. |
+| T43 | shared | Generation-scoped expansion + placing-order sort — fixes two correctness gaps in the SPEZIFIK1→2 expansion that T42 verification surfaced: a token **collision** (`fnnn`/`fpnn`/`nnnn` = Blech sheet-edge vs Paneel feature-axis), resolved by a new catalog **Generation** column + a short-derived generation scope filter; and output **order**, resolved by sorting the assembled long form on `placing_order`. One in-place rework of the `spezi-g1` expansion. See §10.3. | **DONE — implemented + Inventor-verified (2026-06-26)**; also canonicalizes the short form. 104 tests, build ×4 clean. Commit bundles T41+T42+T43. |
+| T44 | shared | Logics-Constructor card-editor responsive layout — card fields **wrap** to the available width instead of clipping or forcing the giant outer horizontal scrollbar; each `label+field` pair is kept together (no orphaned labels); the whole field area (type controls **+** companion/partner picker) flows as one `WrapPanel`; each card has its own **horizontal** scrollbar that engages below a `MinWidth` floor (700 px) while the outer view keeps **vertical** scrolling; no per-card vertical scroll. XAML-only (shared `CatalogBuilderWindow.xaml`). See §5.8 (Card / Basic Logic row layout + Scrolling). | **DONE — implemented + Inventor-verified (2026-06-26)**; build ×4 clean. |
 
 ### 10.1 Task #40 — Multi-tab catalog membership (planned)
 
@@ -1917,6 +1967,131 @@ Agreed terms — use these in all conversations to avoid ambiguity.
 
 **Test_Spezifik migration (separate, one-time).** Translate each data row's legacy code CSV (`G1,G2…` in the Role-None `value_visibility_in_group_tab_id` column) into the tab names in the TAB column; keep the 9 header rows as definition rows; drop the visibility column + the `G1…G9` codes.
 
+### 10.2 Task #42 — Compose Split Mode (planned)
+
+**Goal.** When the user types a SPEZIFIK1 short form such as `100-pur-l5a1-fnpp-dvsp`, the add-in must produce a complete SPEZIFIK2 long form including the expansion of packed material doubles (`l5a1` → `D1 Edelstahl… / D2 PVC-w…`) and packed feature stacks (`fnpp` → `Feder links, angeschäumter Pfosten oben/unten`). Today PairTransform drops any token that has no direct catalog match, so packed codes are silently lost. This task introduces Split Mode on the existing Compose card to fill that gap.
+
+**Design decisions.**
+
+- **PairTransform is untouched.** It handles all direct-match tokens and continues to write the base SPEZIFIK2 value. No change to existing PairTransform code or configuration.
+- **Two additional Compose cards** are added to the SPECIAL:LOGIC: group alongside PairTransform, each in `OutputMode=append` and `OnDirectMatch=skip`, so they contribute only the tokens PairTransform could not expand.
+- **Material doubles** use longest-match sub-tokenization (existing Compose mechanism) against a material-only sub-catalog. Mixed-length codes (`hlz`=3-char + `a1`=2-char) are correctly handled. Same-material doubles collapse to `D1/D2 X`; mixed doubles produce `D1 X / D2 Y`.
+- **Feature stacks** use a pre-computed combinations sub-catalog (4-char PRI entries) so that axis-specific semantics (`fn`=L-R "Feder links" vs `fn`=O-U "Feder oben") are resolved at catalog-authoring time, not by the engine. `LongestMatchTokenize` finds the 4-char whole-token match, bypassing axis ambiguity entirely.
+
+**Code changes (rebuild required):**
+- Six new Compose card params in `CardEngine.cs` + `CatalogBuilderViewModel` + `CatalogBuilderWindow.xaml`: `SourceSeparator`, `TokenOutputSeparator`, `ComposeFallbackCatalogId`, `OnDirectMatch`, `OutputMode`, `AppendSeparator`. Full spec: §5.8 Compose Split Mode.
+- `IsComposeSplitMode` computed property on `CardItemViewModel` (`!string.IsNullOrEmpty(SourceSeparator)`); drives Row 3 visibility in the card editor.
+- Card editor XAML (`CatalogBuilderWindow.xaml`): Compose params restructured from a flat `WrapPanel` to a 3-row `StackPanel(Vertical)` — Rows 1+2 always visible for Compose; Row 3 gated by `IsComposeSplitMode`. No other card types touched.
+
+**Adjustments (no rebuild):**
+
+| Artifact | Change |
+|---|---|
+| `001-test-spezifik-material-katalog.json` | New sub-catalog: Material + Holz_Material entries only (no Merkmale/Blechkante); used as `ComposeFallbackCatalogId` for the Material Compose card |
+| `001-test-spezifik-feature-combos-katalog.json` | New sub-catalog: pre-computed 4-char feature stacks as direct PRI entries, correct combined SEC; used as `ComposeFallbackCatalogId` for the Feature Compose card |
+| `Test_Spezifik.capability.json` | `spezi-g1` / `spezi-g2` groups: add Material Compose card + Feature Compose card after existing PairTransform card |
+| `Addin_Language_File_EN/DE.json` | Keys for the 6 new params: `Compose_SourceSeparator`, `Compose_TokenOutputSep`, `Compose_FallbackCatalogId`, `Compose_OnDirectMatch`, `Compose_OutputMode`, `Compose_AppendSeparator` (+ tooltip keys) |
+
+**Example — `100-pur-l5a1-fnpp-dvsp-tpl`:**
+
+| Card | Processes | Writes to SPEZIFIK2 |
+|---|---|---|
+| PairTransform | `100`→ISO 100, `pur`→PUR-Schaum, `dvsp`→Druckverteilerplatte Spanplatte, `tpl`→T-Pfosten… | `ISO 100, PUR-Schaum, Druckverteilerplatte Spanplatte, T-Pfosten…` |
+| Material Compose | `l5a1` → `l5`+`a1` → D1/D2 framing | appends `, D1 Edelstahl 1.4301 2,0 rutschh. R11 / D2 PVC-w 0,6 RAL9010` |
+| Feature Compose | `fnpp` → 4-char direct match in combos catalog → "Feder links, angeschäumter Pfosten oben/unten" | appends `, Feder links, angeschäumter Pfosten oben/unten` |
+| **Final SPEZIFIK2** | | `ISO 100, PUR-Schaum, Druckverteilerplatte Spanplatte, T-Pfosten…, D1 Edelstahl 1.4301 2,0 rutschh. R11 / D2 PVC-w 0,6 RAL9010, Feder links, angeschäumter Pfosten oben/unten` |
+
+**Tests (net8 + net48):**
+- SourceSeparator splits on `-`; direct-match tokens pass through / are skipped per `OnDirectMatch`.
+- Material doubles: same-material collapse (`g2g2`→D1/D2), mixed (`l5a1`→D1/D2), 3-char+2-char (`hlzg2`), unknown token → skip.
+- Feature combos: 4-char direct hit (`fngg`→"Feder links, stirnseitig glatt"), `nnnn`→empty→no append, single-axis (`fnnn`→"Feder links").
+- `OutputMode=append`: appends with separator when companion non-empty; writes directly when companion empty.
+- `OnDirectMatch=skip`: direct-match tokens excluded from output; sub-expanded tokens included.
+- IPT (single material, no doubles): PairTransform handles everything; both Compose cards produce empty output; SPEZIFIK2 unchanged.
+
+**Documentation (part of done):**
+- §5.8 Compose Split Mode (this section — already present).
+- Card editor UI: new param editors visible when `IsCompose` in `CatalogBuilderWindow.xaml`.
+- `docs/Getting-Started.md`: brief note in the Compose card reference.
+- EN/DE language JSON parity across all 4 variants via cross-variant linking (§7.6).
+
+### 10.3 Task #43 — Generation-scoped expansion + placing-order sort (IMPLEMENTED + Inventor-verified 2026-06-26)
+
+> **AS-BUILT (2026-06-26).** Engine: new `ColumnRole.Generation` (badge `GEN`); `EntryInGenerationScope` (blank cell = universal) + `EntryInCategory` + `DetectGeneration` threaded into `BuildPairTransformValue`/`BuildComposeValue`/`BuildComposeSplitValue`/`FindDirectMatchSec` (all default-inert). Category & generation matching is **case-insensitive STARTS-WITH over a comma-list** (handles the real `Value_ID` = `CategoryNNN` convention; e.g. signal `Schaum,Füllung`, material scope `Material,Holz_Material`). Sorted assembly: `OrderedSegment` + `BuildPairTransformSegments` + `GetComposeSegments` (Compose `OutputPlacing` param) + `AssembleSorted` (sort placing→internal→order, join once). **Also `BuildSortedShort`** canonicalizes the SHORT (SPEZIFIK1) by the same placing — *added post-verify on user feedback*. Group config on `CardGroup`: `OrderCompanionByPlacing` (⇅ toggle, `GEN`-amber, mirrors Expert `⚡`), `GenerationSignalColumn/Values`, `GenerationWhenPresent/Absent`. Material sub-catalog **deleted** (category scope replaces it → two catalog files). `spezi-g1` placings: Schaum 1, Füllung 2, Material 3, feature axes 4 (so Material `OutputPlacing=3`, Feature `=4`). Editor: `GEN` role in the column picker + a "Rank" (`OutputPlacing`) field. 104 tests; build ×4 clean; verified in Inventor (Blech/Paneel detection, collision fix, sorted long + short). spezi-g2 (reverse long→short) not touched.
+
+**Goal.** Verifying T42 on real `spezi-g1` data surfaced two correctness gaps in the SPEZIFIK1 → SPEZIFIK2 expansion. They live in the same pipeline and are fixed together so it lands once:
+
+1. **Token collision.** Three codes — `fnnn`, `fpnn`, `nnnn` — mean a Blech sheet-edge ("umlaufend C-Kante 17/10") on a Blech-world part but a Paneel feature-axis stack ("Feder links") on a foam Paneel. The two readings come from a deliberate old/new ("ILKAsys Plus") token-space overlap and are never both valid at once, but they share one catalog. PairTransform's flat main-catalog lookup grabs the Blech reading first, so a Paneel short like `60-pur-g2g2-fnnn` expands the wrong long form.
+2. **Output order.** The long form is assembled in token-input order (PairTransform) then card-execution order, with no sort. Advanced users *type* shorts (the picker is for newcomers) and routinely mix token order, so the long form must be re-ordered into the canonical category order — Isolation < Schaum < Material < Feature < Rest — defined by the catalog's `placing_order` column.
+
+(The expansion — not the picker — is the primary path for advanced users; regenerating the long from the short already corrects manual long-form typos. This task adds correct **content** (collision) and correct **order** (sort).)
+
+**Design decisions — collision (Generation scope; data-validated).**
+
+- New catalog **"Generation" column** (a dedicated role, label "Generation"). **Blank = universal** — the row matches any generation; a generation-specific row beats a blank one for the same short. Only the 3 colliding Blech rows are tagged `Generation = Blech`; every other row stays one untouched row. (Short and long are *columns* of one row, so this never multiplies rows — cost = 1 column + 3 tagged cells. The Paneel "Feder" reading keeps coming from the existing feature-combos sub-catalog.)
+- **Generation is detected from the short, not fixed on the group** (both worlds type through the same `spezi-g1`): a **Füllung/Schaum-category token present ⇒ Paneel**, absent ⇒ Blech-world. Configurable — the capability names the catalog category that flags Paneel; no hard-coded token list.
+- **Scope filter** in the expansion lookup: match rows whose Generation ∈ {detected, blank}; exclude the other generation's tagged rows. A Paneel short skips the Blech `fnnn`→C-Kante row, so `fnnn` falls through to the feature-combos fallback → "Feder links"; a Blech short direct-matches `fnnn`→C-Kante and Compose `OnDirectMatch=skip` prevents a duplicate Feder.
+- **Empirically validated** on the 364k-row real export (`NLi1_010+015+050+120`): the foam token disambiguates 100 % of colliding-code rows — foam-present → 16,345 (Paneel/Feder), foam-absent → 655 (all IPTs, Blech/C-Kante), and **0 of 20,336 foam-less IAMs carry these codes**. No filename/part-type detection is needed.
+
+**Design decisions — order (placing-order sorted assembly).**
+
+- The companion (SPEZIFIK2) is assembled by **collecting tagged segments from every contributing card, sorting by `placing_order` (Role 7 / GroupSortKey) then `internal_order` (Role 5 / SortKey), then writing once** — replacing T42's "PairTransform writes, Compose appends" sequential model.
+  - Each PairTransform direct token → one segment tagged with that token's catalog `placing_order` / `internal_order`.
+  - Each Compose card → one segment tagged with its category rank (see D-sort-2).
+- This **supersedes T42's `OutputMode=append` + `AppendSeparator`** for this pipeline (those params remain valid for standalone Compose use elsewhere).
+
+**Sub-decisions — RATIFIED 2026-06-26:**
+
+- **D-sort-1 (sorted mode enable) → group-level toggle.** A per-group boolean, surfaced as a small **pictogram toggle button** in the group header, a sibling to the Expert `⚡` and built the same way (`ToggleExpertCommand` pattern — a direct group property, NOT card-driven). Glyph: a sort pictogram (`⇅`, exact glyph tweakable); **dim when OFF, amber + bold when ON** (mirrors the `⚡` highlight); a **brief hover tooltip** that only states it enables sorting (e.g. "Enables sorting — orders the output in catalog order") — the **in-depth explanation lives in the Info Window (card help via `InfoPanelBuilder`) + `Getting-Started.md`, NOT the tooltip**. Click toggles that group's output-sorting. Gates the collect-sort-write path without touching any non-SPEZIFIK group.
+- **D-sort-2 (Compose segment placing) → per-card `OutputPlacing` integer** (Material card = 3, Feature card = 12). Confirmed by the two-file reduction below: with the material sub-catalog merged back into the main catalog, a sub-catalog placing column is moot, so the card-level number is the natural source.
+- **D-sort-3 (replace append) → confirmed.** `spezi-g1`'s two Compose cards move from `OutputMode=append` to contributing tagged segments; the sorted assembly subsumes append. Modify-in-place on the still-uncommitted T42 config — no public/back-compat impact.
+- **Two-file reduction (folded into T43).** The `001-test-spezifik-material-katalog` sub-catalog is eliminated — its only job (constrain `g2g2` sub-tokenization to material rows) is now done by a **category scope** on the Compose fallback (the same scope machinery T43 adds for Generation): the Material Compose card sub-tokenizes against the MAIN catalog restricted to the Material category instead of a separate file. Removes the material double-entry upkeep. The feature-combos catalog stays separate (it is *generated* combination data, not a subset). Net: **two catalog files** (main + feature-combos).
+
+**Code changes (rebuild required):**
+
+- `CardEngine`: a **Generation** column role (extend `GetRoleKey`/role parsing); a **generation-scope filter** threaded into `BuildPairTransformValue` + `BuildComposeSplitValue` / `GetComposeWritesEx` (match {gen, blank}); a **category scope** on the Compose fallback (sub-tokenize against the main catalog restricted to a named category — replaces the material sub-catalog file); a **generation detector** (short contains a token of the configured signal category ⇒ Paneel); the **sorted-assembly** path (collect tagged segments → sort by placing/internal → join once) + the `OutputPlacing` Compose param (per D-sort-2).
+- `CheckupViewModel` SPECIAL:LOGIC apply path: when the group enables sorted mode (per D-sort-1), replace the sequential PairTransform-write + Compose-append loop with the collect → sort → write-once coordinator.
+- `CatalogBuilderViewModel` + `CatalogBuilderWindow.xaml`: Catalog-tab editor support for the Generation role; card-editor support for `OutputPlacing` (Compose Split-Mode row) and the group flag (group header).
+
+**Adjustments (no rebuild):**
+
+| Artifact | Change |
+|---|---|
+| `Test_Spezifik.catalog.json` (×4) | Add the **Generation** column (role); tag `fnnn` / `fpnn` / `nnnn` rows `Generation = Blech`, leave every other row blank; **merge the former material sub-catalog rows back in** (they already live here as the Material category — nothing to copy if the sub-catalog was a subset; verify parity) |
+| `001-test-spezifik-material-katalog.json` (×4) | **Removed** — the Material Compose card now sub-tokenizes against the main catalog scoped to the Material category (category scope on the Compose fallback) instead of a separate file |
+| `Test_Spezifik.capability.json` (×4) | `spezi-g1`: turn ON the group sort toggle (D-sort-1); set the generation-signal category (Füllung); point the Material Compose card at the Material **category scope** of the main catalog (was `ComposeFallbackCatalogId` → material sub-catalog); set each Compose card's `OutputPlacing` (Material 3, Feature 12); drop `OutputMode=append` / `AppendSeparator` |
+| `Addin_Language_File_EN/DE.json` | Keys for the Generation role label, the group sort-toggle tooltip, and the new card param(s) |
+
+(Catalog files net: **two** — main `001-test-spezifik-katalog` + `001-test-spezifik-feature-kombis-katalog`.)
+
+**Example — `g2g2-pur-60-fnnn` (deliberately mis-ordered by the user):**
+
+| Step | Contributes | placing |
+|---|---|---|
+| detect generation | `pur` / `60` present ⇒ **Paneel** | — |
+| PairTransform | `60`→ISO 60 · `pur`→PUR-Schaum · `fnnn`→(Blech row out of scope → no direct match) | 1, 2 |
+| Material Compose | `g2g2` → `D1/D2 Edelstahl 1.4301 0,8 Korn 320` | 3 |
+| Feature Compose | `fnnn` → combos fallback → `Feder links` | 12 |
+| **sort by placing + join** | | `ISO 60, PUR-Schaum, D1/D2 Edelstahl 1.4301 0,8 Korn 320, Feder links` |
+
+Even though the user typed the tokens out of order, the output is canonical.
+
+**Tests (net8 + net48):**
+
+- Generation: `blank` matches both scopes; a `Generation=Blech` row is skipped under Paneel scope and matched under Blech scope; generation detected from the configured signal category (foam present ⇒ Paneel).
+- Collision: Paneel `60-pur-g2g2-fnnn` → "… , Feder links" (not C-Kante); Blech `g2-fnnn` → "… , umlaufend C-Kante"; `g2-fnnn` does NOT also emit Feder (`OnDirectMatch=skip`).
+- Sort: mis-ordered input (`fnnn-g2g2-pur-60`) → canonical placing order; ties broken by `internal_order` then stable input order; a "Rest" token (placing > feature) lands after features.
+- Regression: a group WITHOUT sorted mode behaves exactly as T42 (append order); base Compose unaffected; Demo groups unaffected.
+- IPT single material (`60-pur-g2`): Compose cards emit nothing; sort is a no-op over the PairTransform segments.
+
+**Documentation (part of done):**
+
+- §4 / §5.8: Generation role + generation-scoped lookup + sorted-companion assembly + `OutputPlacing`.
+- In-app ℹ help (`InfoPanelBuilder`) + `docs/Getting-Started.md` Compose/SPEZIFIK note.
+- EN/DE parity across all 4 variants via cross-variant linking (§7.6).
+
+**Bundling.** Lands with T41 + T42 in one commit (public parts only; `Assert-NoPrivateFiles` keeps all `Test_Spezifik` data out). The temporary T42 diagnostics (DiagLogger enable in `StandardAddInServer.cs` + the `"compose"` logging in `CheckupViewModel.cs`) are stripped in the same rebuild.
+
 ---
 
 ## Appendix A — Naming Glossary
@@ -1929,7 +2104,7 @@ Alphabetical quick-reference. Every term used in this TDD, conversations, and co
 | **Basic Logic**         | Formula-driven function inside a Group; purely computational; no catalog required; rudimentary spreadsheet-style formulas (IF, CONCAT, ROUND, etc.)                                                                                                                                                        |
 | **Bottom bar**          | The bottommost row of the main window; contains Style Purger (left), Preset buttons (centre), Info/Reset/Close (right)                                                                                                                                                                                     |
 | **Capability Set**      | Named container holding one or more Groups; the top-level organisational unit in the Logics-Constructor                                                                                                                                                                                                     |
-| **Card**                | One logic brick inside a Group; catalog-backed or higher-level; may have interactive visual component (Dropdown, Button, Search, Link, Sync, MultiPick, PairTransform, PrefixSuffix, Sort, BasicLogic)                                                                                                                            |
+| **Card**                | One logic brick inside a Group; catalog-backed or higher-level; may have interactive visual component (Dropdown, Button, Search, Link, Sync, MultiPick, PairTransform, Compose, PrefixSuffix, Sort, BasicLogic)                                                                                                                            |
 | **Catalog**             | Named data table with columns and entries; the data source for Dropdown/Button/Search cards                                                                                                                                                                                                                |
 | **Document Name Field** | Header bar element showing the active/selected document filename(s); three view modes (Plain/Compact/Detailed) cycled via the View Mode button (label `S ⇄` / `C ⇄` / `D ⇄`) or left-click; auto-wraps/trims at 2 lines (Plain/Compact) or 5 lines (Detailed); full text on tooltip; mode persisted in Registry                                                                   |
 | **Drag Handle**         | The 2×3 dot grid used as the sole initiation point for drag-and-drop reordering. In the main window: far left of every Row (before the Value Field). In the Logics-Constructor: also appears in Group header bars (reorders Groups) and in Card/Basic Logic rows (reorders items within or between Groups). |

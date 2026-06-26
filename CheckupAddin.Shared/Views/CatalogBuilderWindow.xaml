@@ -847,7 +847,11 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <!-- V1: optional section divider shown ABOVE the first Expert group -->
-                                        <StackPanel>
+                                        <!-- T44 Step 1: cap each group to the viewport width so card editors WRAP (every per-type
+                                             panel is now a WrapPanel) instead of clipping; MinWidth is the floor below which the group
+                                             holds width and the outer horizontal scrollbar returns. Floor tuned in Step 3. -->
+                                        <StackPanel MinWidth="320"
+                                                    MaxWidth="{Binding ViewportWidth, RelativeSource={RelativeSource AncestorType={x:Type ScrollViewer}}}">
                                             <Border Margin="0,4,0,8"
                                                     Padding="8,3"
                                                     Background="#D4A017"
@@ -1073,6 +1077,9 @@
                                                         </Grid>
 
                                                         <!-- ⚡ Expert toggle (expanded only) — shows topo order badge when IsExpert -->
+                                                        <StackPanel Grid.Column="4" Orientation="Horizontal">
+                                                        <!-- T43 ⇅ sort toggle (sort-amount-descending pictogram); amber when ON, like ⚡ -->
+                                                        <Button Command="{Binding ToggleSortCommand}" MinWidth="24" Height="24" Padding="3,0" Margin="0,0,6,0" ToolTip="{DynamicResource Cap_TipSortToggle}"><TextBlock Text="⇊" FontSize="13" VerticalAlignment="Center"/><Button.Style><Style TargetType="Button" BasedOn="{StaticResource CbBtn}"><Style.Triggers><DataTrigger Binding="{Binding IsCollapsed}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger><DataTrigger Binding="{Binding OrderByPlacing}" Value="True"><Setter Property="Foreground" Value="#D4A017"/></DataTrigger></Style.Triggers></Style></Button.Style></Button>
                                                         <Button Grid.Column="4"
                                                                 Command="{Binding ToggleExpertCommand}"
                                                                 MinWidth="24" Height="24"
@@ -1100,6 +1107,7 @@
                                                                 </Style>
                                                             </Button.Style>
                                                         </Button>
+                                                        </StackPanel>
                                                         <!-- Delete group button (expanded only) -->
                                                         <Button Grid.Column="5"
                                                                 Content="×"
@@ -1702,16 +1710,33 @@
                                                                                        FontWeight="SemiBold"/>
                                                                         </StackPanel>
                                                                     </Border>
+                                                                    <!-- T44 Step 2 (rev): editor param/display area WRAPS to the available width, but never
+                                                                         narrower than the inner panel's MinWidth; below that the CARD gets its own HORIZONTAL
+                                                                         scrollbar (no per-card vertical scroll). MinWidth is the single knob — it sets both the
+                                                                         tallest wrapped height AND the window width at which the h-scrollbar appears. The outer
+                                                                         CapabilitiesScrollViewer still scrolls the whole groups list vertically (incl. mouse wheel).
+                                                                         Width is bound to this ScrollViewer's ViewportWidth so the inner panel wraps to the viewport
+                                                                         when wide, and the MinWidth floor forces the h-scrollbar when the viewport gets narrower. -->
+                                                                    <ScrollViewer DockPanel.Dock="Top"
+                                                                                  VerticalScrollBarVisibility="Disabled"
+                                                                                  HorizontalScrollBarVisibility="Auto">
+                                                                    <StackPanel MinWidth="700"
+                                                                                Width="{Binding ViewportWidth, RelativeSource={RelativeSource AncestorType={x:Type ScrollViewer}}}">
                                                                     <DockPanel DockPanel.Dock="Top">
                                                                         <!-- Enabled checkbox -->
                                                                         <CheckBox DockPanel.Dock="Left"
                                                                                   IsChecked="{Binding Enabled}"
-                                                                                  VerticalAlignment="Center"
-                                                                                  Margin="0,0,6,0"
+                                                                                  VerticalAlignment="Top"
+                                                                                  Margin="0,2,6,0"
                                                                                   ToolTip="{DynamicResource CatBuilder_Card_Enabled}"/>
+                                                                        <!-- T44: wrap the whole field area (type panel + companion picker) as ONE flow so the
+                                                                             companion wraps below the type fields instead of overflowing to the right when narrow.
+                                                                             Enabled stays Dock=Left (Top-aligned); this WrapPanel fills the rest. -->
+                                                                        <WrapPanel Orientation="Horizontal">
                                                                         <!-- Catalog picker (Dropdown / Button / Search / Sort cards) -->
-                                                                        <StackPanel Orientation="Horizontal" DockPanel.Dock="Left"
+                                                                        <WrapPanel Orientation="Horizontal" DockPanel.Dock="Left"
                                                                                     Visibility="{Binding IsCatalogCard, Converter={StaticResource BoolToVis}}">
+                                                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3"><!-- keep label+field together -->
                                                                             <TextBlock Text="{DynamicResource CatBuilder_Cap_TargetCatalog}"
                                                                                        VerticalAlignment="Center" Margin="0,0,4,0"
                                                                                        Foreground="{DynamicResource CheckupSecondaryText}"/>
@@ -1727,59 +1752,73 @@
                                                                                     </DataTemplate>
                                                                                 </ComboBox.ItemTemplate>
                                                                             </ComboBox>
-                                                                        </StackPanel>
+                                                                            </StackPanel>
+                                                                        </WrapPanel>
                                                                         <!-- Search: search roles -->
-                                                                        <StackPanel Orientation="Horizontal"
+                                                                        <WrapPanel Orientation="Horizontal"
                                                                                     Visibility="{Binding IsSearch, Converter={StaticResource BoolToVis}}">
+                                                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
                                                                             <TextBlock Text="{DynamicResource CatBuilder_Card_SearchRoles}"
                                                                                        VerticalAlignment="Center" Margin="0,0,4,0"
                                                                                        Foreground="{DynamicResource CheckupSecondaryText}"/>
                                                                             <TextBox Text="{Binding SearchRoles, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                                                      Width="80" Height="24" Margin="0,0,10,0"
                                                                                      VerticalContentAlignment="Center" Padding="3,0"/>
+                                                                            </StackPanel>
+                                                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
                                                                             <TextBlock Text="{DynamicResource CatBuilder_Card_TextRole}"
                                                                                        VerticalAlignment="Center" Margin="0,0,4,0"
                                                                                        Foreground="{DynamicResource CheckupSecondaryText}"/>
                                                                             <ComboBox ItemsSource="{Binding AvailableCatalogRoles}"
                                                                                       SelectedItem="{Binding SecRole, Mode=TwoWay}"
                                                                                       Width="60" Height="24" Margin="0,0,10,0"/>
+                                                                            </StackPanel>
+                                                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
                                                                             <TextBlock Text="{DynamicResource CatBuilder_Card_TooltipRole}"
                                                                                        VerticalAlignment="Center" Margin="0,0,4,0"
                                                                                        Foreground="{DynamicResource CheckupSecondaryText}"/>
                                                                             <ComboBox ItemsSource="{Binding AvailableCatalogRoles}"
                                                                                       SelectedItem="{Binding TooltipRole, Mode=TwoWay}"
                                                                                       Width="60" Height="24"/>
-                                                                        </StackPanel>
+                                                                            </StackPanel>
+                                                                        </WrapPanel>
                                                                         <!-- Dropdown + Button: display role pickers -->
-                                                                        <StackPanel Orientation="Horizontal"
+                                                                        <WrapPanel Orientation="Horizontal"
                                                                                     Visibility="{Binding IsDropdownOrButton, Converter={StaticResource BoolToVis}}">
+                                                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
                                                                             <TextBlock Text="{DynamicResource CatBuilder_Card_TextRole}"
                                                                                        VerticalAlignment="Center" Margin="0,0,4,0"
                                                                                        Foreground="{DynamicResource CheckupSecondaryText}"/>
                                                                             <ComboBox ItemsSource="{Binding AvailableCatalogRoles}"
                                                                                       SelectedItem="{Binding SecRole, Mode=TwoWay}"
                                                                                       Width="60" Height="24" Margin="0,0,10,0"/>
+                                                                            </StackPanel>
+                                                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
                                                                             <TextBlock Text="{DynamicResource CatBuilder_Card_TooltipRole}"
                                                                                        VerticalAlignment="Center" Margin="0,0,4,0"
                                                                                        Foreground="{DynamicResource CheckupSecondaryText}"/>
                                                                             <ComboBox ItemsSource="{Binding AvailableCatalogRoles}"
                                                                                       SelectedItem="{Binding TooltipRole, Mode=TwoWay}"
                                                                                       Width="60" Height="24"/>
-                                                                        </StackPanel>
+                                                                            </StackPanel>
+                                                                        </WrapPanel>
                                                                         <!-- Link: companion field moved to shared picker section below -->
                                                                         <!-- Sync: role picker (companion field moved to shared picker section below) -->
-                                                                        <StackPanel Orientation="Horizontal"
+                                                                        <WrapPanel Orientation="Horizontal"
                                                                                     Visibility="{Binding IsSync, Converter={StaticResource BoolToVis}}">
+                                                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
                                                                             <TextBlock Text="{DynamicResource CatBuilder_Card_Role}"
                                                                                        VerticalAlignment="Center" Margin="0,0,4,0"
                                                                                        Foreground="{DynamicResource CheckupSecondaryText}"/>
                                                                             <ComboBox ItemsSource="{Binding AvailableCatalogRoles}"
                                                                                       SelectedItem="{Binding CompanionRole, Mode=TwoWay}"
                                                                                       Width="60" Height="24"/>
-                                                                        </StackPanel>
+                                                                            </StackPanel>
+                                                                        </WrapPanel>
                                                                         <!-- Multi-Pick: primary sep, role, companion sep (companion field moved to shared picker section below) -->
-                                                                        <StackPanel Orientation="Horizontal"
+                                                                        <WrapPanel Orientation="Horizontal"
                                                                                     Visibility="{Binding IsMultiPick, Converter={StaticResource BoolToVis}}">
+                                                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
                                                                             <TextBlock Text="{DynamicResource CatBuilder_Card_PriSep}"
                                                                                        VerticalAlignment="Center" Margin="0,0,4,0"
                                                                                        Foreground="{DynamicResource CheckupSecondaryText}"
@@ -1787,6 +1826,8 @@
                                                                             <TextBox Text="{Binding PrimaryTokenSeparator, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                                                      Width="40" Height="24" Margin="0,0,10,0"
                                                                                      VerticalContentAlignment="Center" Padding="3,0"/>
+                                                                            </StackPanel>
+                                                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
                                                                             <TextBlock Text="{DynamicResource CatBuilder_Card_Role}"
                                                                                        VerticalAlignment="Center" Margin="0,0,4,0"
                                                                                        Foreground="{DynamicResource CheckupSecondaryText}"
@@ -1794,6 +1835,8 @@
                                                                             <ComboBox ItemsSource="{Binding AvailableCatalogRoles}"
                                                                                       SelectedItem="{Binding CompanionRole, Mode=TwoWay}"
                                                                                       Width="60" Height="24" Margin="0,0,10,0"/>
+                                                                            </StackPanel>
+                                                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
                                                                             <TextBlock Text="{DynamicResource CatBuilder_Card_CompanionSep}"
                                                                                        VerticalAlignment="Center" Margin="0,0,4,0"
                                                                                        Foreground="{DynamicResource CheckupSecondaryText}"
@@ -1801,10 +1844,12 @@
                                                                             <TextBox Text="{Binding CompanionTokenSeparator, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                                                      Width="50" Height="24"
                                                                                      VerticalContentAlignment="Center" Padding="3,0"/>
-                                                                        </StackPanel>
+                                                                            </StackPanel>
+                                                                        </WrapPanel>
                                                                         <!-- Pair Transform: source sep, lookup role, output role, output sep (companion field moved to shared picker section below) -->
-                                                                        <StackPanel Orientation="Horizontal"
+                                                                        <WrapPanel Orientation="Horizontal"
                                                                                     Visibility="{Binding IsPairTransform, Converter={StaticResource BoolToVis}}">
+                                                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
                                                                             <TextBlock Text="{DynamicResource CatBuilder_Card_SrcSep}"
                                                                                        VerticalAlignment="Center" Margin="0,0,4,0"
                                                                                        Foreground="{DynamicResource CheckupSecondaryText}"
@@ -1812,6 +1857,8 @@
                                                                             <TextBox Text="{Binding SourceTokenSeparator, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                                                      Width="40" Height="24" Margin="0,0,10,0"
                                                                                      VerticalContentAlignment="Center" Padding="3,0"/>
+                                                                            </StackPanel>
+                                                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
                                                                             <TextBlock Text="{DynamicResource CatBuilder_Card_LookupRole}"
                                                                                        VerticalAlignment="Center" Margin="0,0,4,0"
                                                                                        Foreground="{DynamicResource CheckupSecondaryText}"
@@ -1819,6 +1866,8 @@
                                                                             <ComboBox ItemsSource="{Binding AvailableCatalogRoles}"
                                                                                       SelectedItem="{Binding LookupRole, Mode=TwoWay}"
                                                                                       Width="60" Height="24" Margin="0,0,10,0"/>
+                                                                            </StackPanel>
+                                                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
                                                                             <TextBlock Text="{DynamicResource CatBuilder_Card_OutputRole}"
                                                                                        VerticalAlignment="Center" Margin="0,0,4,0"
                                                                                        Foreground="{DynamicResource CheckupSecondaryText}"
@@ -1826,6 +1875,8 @@
                                                                             <ComboBox ItemsSource="{Binding AvailableCatalogRoles}"
                                                                                       SelectedItem="{Binding OutputRole, Mode=TwoWay}"
                                                                                       Width="60" Height="24" Margin="0,0,10,0"/>
+                                                                            </StackPanel>
+                                                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
                                                                             <TextBlock Text="{DynamicResource CatBuilder_Card_OutSep}"
                                                                                        VerticalAlignment="Center" Margin="0,0,4,0"
                                                                                        Foreground="{DynamicResource CheckupSecondaryText}"
@@ -1833,10 +1884,123 @@
                                                                             <TextBox Text="{Binding OutputTokenSeparator, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                                                      Width="50" Height="24" Margin="0,0,10,0"
                                                                                      VerticalContentAlignment="Center" Padding="3,0"/>
+                                                                            </StackPanel>
+                                                                        </WrapPanel>
+                                                                        <!-- Compose card params (Task #41/#42): 3-row layout — Row 1: roles,
+                                                                             Row 2: framing + SourceSeparator trigger, Row 3: Split Mode params -->
+                                                                        <StackPanel Orientation="Vertical"
+                                                                                    Visibility="{Binding IsCompose, Converter={StaticResource BoolToVis}}">
+                                                                            <!-- Row 1: catalog roles -->
+                                                                            <WrapPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                                                                <StackPanel Orientation="Horizontal">
+                                                                                <TextBlock Text="{DynamicResource CatBuilder_Card_LookupRole}" VerticalAlignment="Center" Margin="0,0,4,2"
+                                                                                           Foreground="{DynamicResource CheckupSecondaryText}" ToolTip="{DynamicResource Tip_LookupRole}"/>
+                                                                                <ComboBox ItemsSource="{Binding AvailableCatalogRoles}" SelectedItem="{Binding LookupRole, Mode=TwoWay}"
+                                                                                          Width="60" Height="24" Margin="0,0,10,2"/>
+                                                                                </StackPanel>
+                                                                                <StackPanel Orientation="Horizontal">
+                                                                                <TextBlock Text="{DynamicResource CatBuilder_Card_OutputRole}" VerticalAlignment="Center" Margin="0,0,4,2"
+                                                                                           Foreground="{DynamicResource CheckupSecondaryText}" ToolTip="{DynamicResource Tip_OutputRole}"/>
+                                                                                <ComboBox ItemsSource="{Binding AvailableCatalogRoles}" SelectedItem="{Binding OutputRole, Mode=TwoWay}"
+                                                                                          Width="60" Height="24" Margin="0,0,10,2"/>
+                                                                                </StackPanel>
+                                                                            </WrapPanel>
+                                                                            <!-- Row 2: framing params + SourceSeparator (non-empty value enables Row 3) -->
+                                                                            <WrapPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                                                                <StackPanel Orientation="Horizontal">
+                                                                                <TextBlock Text="{DynamicResource CatBuilder_Card_ItemPrefixes}" VerticalAlignment="Center" Margin="0,0,4,2"
+                                                                                           Foreground="{DynamicResource CheckupSecondaryText}" ToolTip="{DynamicResource Tip_ComposeItemPrefixes}"/>
+                                                                                <TextBox Text="{Binding ComposeItemPrefixes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                                         Width="90" Height="24" Margin="0,0,10,2" VerticalContentAlignment="Center" Padding="3,0"/>
+                                                                                </StackPanel>
+                                                                                <StackPanel Orientation="Horizontal">
+                                                                                <TextBlock Text="{DynamicResource CatBuilder_Card_ItemSep}" VerticalAlignment="Center" Margin="0,0,4,2"
+                                                                                           Foreground="{DynamicResource CheckupSecondaryText}" ToolTip="{DynamicResource Tip_ComposeItemSep}"/>
+                                                                                <TextBox Text="{Binding ComposeItemSeparator, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                                         Width="40" Height="24" Margin="0,0,10,2" VerticalContentAlignment="Center" Padding="3,0"/>
+                                                                                </StackPanel>
+                                                                                <CheckBox Content="{DynamicResource CatBuilder_Card_CollapseEqual}" IsChecked="{Binding ComposeCollapseWhenEqual, Mode=TwoWay}"
+                                                                                          VerticalAlignment="Center" Margin="0,0,6,2" Foreground="{DynamicResource CheckupSecondaryText}"
+                                                                                          ToolTip="{DynamicResource Tip_ComposeCollapse}"/>
+                                                                                <StackPanel Orientation="Horizontal">
+                                                                                <TextBlock Text="{DynamicResource CatBuilder_Card_CollapsedPrefix}" VerticalAlignment="Center" Margin="0,0,4,2"
+                                                                                           Foreground="{DynamicResource CheckupSecondaryText}" ToolTip="{DynamicResource Tip_ComposeCollapsedPrefix}"/>
+                                                                                <TextBox Text="{Binding ComposeCollapsedPrefix, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                                         Width="70" Height="24" Margin="0,0,10,2" VerticalContentAlignment="Center" Padding="3,0"/>
+                                                                                </StackPanel>
+                                                                                <CheckBox Content="{DynamicResource CatBuilder_Card_DropEmpty}" IsChecked="{Binding ComposeDropEmptyOutputs, Mode=TwoWay}"
+                                                                                          VerticalAlignment="Center" Margin="0,0,10,2" Foreground="{DynamicResource CheckupSecondaryText}"
+                                                                                          ToolTip="{DynamicResource Tip_ComposeDropEmpty}"/>
+                                                                                <StackPanel Orientation="Horizontal">
+                                                                                <TextBlock Text="{DynamicResource CatBuilder_Card_MaxItems}" VerticalAlignment="Center" Margin="0,0,4,2"
+                                                                                           Foreground="{DynamicResource CheckupSecondaryText}" ToolTip="{DynamicResource Tip_ComposeMaxItems}"/>
+                                                                                <TextBox Text="{Binding ComposeMaxItems, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                                         Width="34" Height="24" Margin="0,0,10,2" VerticalContentAlignment="Center" Padding="3,0"/>
+                                                                                </StackPanel>
+                                                                                <StackPanel Orientation="Horizontal">
+                                                                                <TextBlock Text="{DynamicResource CatBuilder_Card_OnUnknown}" VerticalAlignment="Center" Margin="0,0,4,2"
+                                                                                           Foreground="{DynamicResource CheckupSecondaryText}" ToolTip="{DynamicResource Tip_ComposeOnUnknown}"/>
+                                                                                <ComboBox ItemsSource="{Binding ComposeUnknownModes}" SelectedItem="{Binding ComposeOnUnknownToken, Mode=TwoWay}"
+                                                                                          Width="100" Height="24" Margin="0,0,10,2"/>
+                                                                                </StackPanel>
+                                                                                <StackPanel Orientation="Horizontal">
+                                                                                <TextBlock Text="{DynamicResource CatBuilder_Card_Compose_SrcSep}" VerticalAlignment="Center" Margin="8,0,4,2"
+                                                                                           Foreground="{DynamicResource CheckupSecondaryText}" ToolTip="{DynamicResource Tip_ComposeSrcSep}"/>
+                                                                                <TextBox Text="{Binding ComposeSourceSeparator, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                                         Width="34" Height="24" Margin="0,0,4,2" VerticalContentAlignment="Center" Padding="3,0"/>
+                                                                                </StackPanel>
+                                                                            </WrapPanel>
+                                                                            <!-- Row 3: Split Mode params — only visible when SourceSeparator is set -->
+                                                                            <WrapPanel Orientation="Horizontal"
+                                                                                       Visibility="{Binding IsComposeSplitMode, Converter={StaticResource BoolToVis}}">
+                                                                                <StackPanel Orientation="Horizontal">
+                                                                                <TextBlock Text="{DynamicResource CatBuilder_Card_TokenOutSep}" VerticalAlignment="Center" Margin="0,0,4,2"
+                                                                                           Foreground="{DynamicResource CheckupSecondaryText}" ToolTip="{DynamicResource Tip_ComposeTokenOutSep}"/>
+                                                                                <TextBox Text="{Binding ComposeTokenOutputSeparator, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                                         Width="40" Height="24" Margin="0,0,10,2" VerticalContentAlignment="Center" Padding="3,0"/>
+                                                                                </StackPanel>
+                                                                                <StackPanel Orientation="Horizontal">
+                                                                                <TextBlock Text="{DynamicResource CatBuilder_Card_FallbackCatalog}" VerticalAlignment="Center" Margin="0,0,4,2"
+                                                                                           Foreground="{DynamicResource CheckupSecondaryText}" ToolTip="{DynamicResource Tip_ComposeFallbackCatalog}"/>
+                                                                                <ComboBox ItemsSource="{Binding DataContext.AvailableCatalogs,
+                                                                                                          RelativeSource={RelativeSource AncestorType={x:Type ListBox}}}"
+                                                                                          SelectedValue="{Binding ComposeFallbackCatalogId, Mode=TwoWay}"
+                                                                                          SelectedValuePath="Id"
+                                                                                          Width="140" Height="24" Margin="0,0,10,2">
+                                                                                    <ComboBox.ItemTemplate>
+                                                                                        <DataTemplate>
+                                                                                            <TextBlock Text="{Binding Name}"/>
+                                                                                        </DataTemplate>
+                                                                                    </ComboBox.ItemTemplate>
+                                                                                </ComboBox>
+                                                                                </StackPanel>
+                                                                                <StackPanel Orientation="Horizontal">
+                                                                                <TextBlock Text="{DynamicResource CatBuilder_Card_OnDirectMatch}" VerticalAlignment="Center" Margin="0,0,4,2"
+                                                                                           Foreground="{DynamicResource CheckupSecondaryText}" ToolTip="{DynamicResource Tip_ComposeOnDirectMatch}"/>
+                                                                                <ComboBox ItemsSource="{Binding ComposeDirectMatchModes}" SelectedItem="{Binding ComposeOnDirectMatch, Mode=TwoWay}"
+                                                                                          Width="80" Height="24" Margin="0,0,10,2"/>
+                                                                                </StackPanel>
+                                                                                <StackPanel Orientation="Horizontal">
+                                                                                <TextBlock Text="{DynamicResource CatBuilder_Card_OutputMode}" VerticalAlignment="Center" Margin="0,0,4,2"
+                                                                                           Foreground="{DynamicResource CheckupSecondaryText}" ToolTip="{DynamicResource Tip_ComposeOutputMode}"/>
+                                                                                <ComboBox ItemsSource="{Binding ComposeOutputModes}" SelectedItem="{Binding ComposeOutputMode, Mode=TwoWay}"
+                                                                                          Width="80" Height="24" Margin="0,0,10,2"/>
+                                                                                </StackPanel>
+                                                                                <StackPanel Orientation="Horizontal">
+                                                                                <TextBlock Text="{DynamicResource CatBuilder_Card_OutputPlacing}" VerticalAlignment="Center" Margin="0,0,4,2" Foreground="{DynamicResource CheckupSecondaryText}" ToolTip="{DynamicResource Tip_ComposeOutputPlacing}"/><TextBox Text="{Binding ComposeOutputPlacing, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="40" Height="24" Margin="0,0,10,2" VerticalContentAlignment="Center" Padding="3,0"/>
+                                                                                </StackPanel>
+                                                                                <StackPanel Orientation="Horizontal">
+                                                                                <TextBlock Text="{DynamicResource CatBuilder_Card_AppendSep}" VerticalAlignment="Center" Margin="0,0,4,2"
+                                                                                           Foreground="{DynamicResource CheckupSecondaryText}" ToolTip="{DynamicResource Tip_ComposeAppendSep}"/>
+                                                                                <TextBox Text="{Binding ComposeAppendSeparator, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                                         Width="40" Height="24" Margin="0,0,4,2" VerticalContentAlignment="Center" Padding="3,0"/>
+                                                                                </StackPanel>
+                                                                            </WrapPanel>
                                                                         </StackPanel>
-                                                                        <!-- Card Field Picker: shared companion/partner field popup (Link, Sync, MultiPick, PairTransform) -->
-                                                                        <StackPanel Orientation="Horizontal"
+                                                                        <!-- Card Field Picker: shared companion/partner field popup (Link, Sync, MultiPick, PairTransform, Compose) -->
+                                                                        <WrapPanel Orientation="Horizontal"
                                                                                     Visibility="{Binding HasCardFieldPicker, Converter={StaticResource BoolToVis}}">
+                                                                            <StackPanel Orientation="Horizontal">
                                                                             <TextBlock Text="{DynamicResource CatBuilder_Card_Companion}"
                                                                                        VerticalAlignment="Center" Margin="0,0,4,0"
                                                                                        Foreground="{DynamicResource CheckupSecondaryText}"
@@ -2111,10 +2275,12 @@
                                                                                     </Border>
                                                                                 </Popup>
                                                                             </Grid>
-                                                                        </StackPanel>
+                                                                            </StackPanel>
+                                                                        </WrapPanel>
                                                                         <!-- PrefixSuffix: prefix, suffix, remove-mode toggle -->
-                                                                        <StackPanel Orientation="Horizontal"
+                                                                        <WrapPanel Orientation="Horizontal"
                                                                                     Visibility="{Binding IsPrefixSuffix, Converter={StaticResource BoolToVis}}">
+                                                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
                                                                             <TextBlock Text="{DynamicResource CatBuilder_Card_Prefix}"
                                                                                        VerticalAlignment="Center" Margin="0,0,4,0"
                                                                                        Foreground="{DynamicResource CheckupSecondaryText}"
@@ -2122,6 +2288,8 @@
                                                                             <TextBox Text="{Binding PsPrefix, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                                                      Width="80" Height="24" Margin="0,0,10,0"
                                                                                      VerticalContentAlignment="Center" Padding="3,0"/>
+                                                                            </StackPanel>
+                                                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
                                                                             <TextBlock Text="{DynamicResource CatBuilder_Card_Suffix}"
                                                                                        VerticalAlignment="Center" Margin="0,0,4,0"
                                                                                        Foreground="{DynamicResource CheckupSecondaryText}"
@@ -2129,11 +2297,12 @@
                                                                             <TextBox Text="{Binding PsSuffix, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                                                      Width="80" Height="24" Margin="0,0,10,0"
                                                                                      VerticalContentAlignment="Center" Padding="3,0"/>
+                                                                            </StackPanel>
                                                                             <CheckBox Content="{DynamicResource CatBuilder_Card_PsRemove}"
                                                                                       IsChecked="{Binding PsIsRemoveMode, Mode=TwoWay}"
                                                                                       VerticalAlignment="Center"
                                                                                       ToolTip="{DynamicResource Tip_PsRemoveMode}"/>
-                                                                        </StackPanel>
+                                                                        </WrapPanel>
                                                                         <!-- Basic Logic: formula text + optional target field override -->
                                                                         <StackPanel Orientation="Vertical"
                                                                                     Visibility="{Binding IsBasicLogic, Converter={StaticResource BoolToVis}}">
@@ -2173,8 +2342,9 @@
                                                                             </DockPanel>
                                                                         </StackPanel>
                                                                         <!-- Sort: lookup role, token separator, invert toggle -->
-                                                                        <StackPanel Orientation="Horizontal"
+                                                                        <WrapPanel Orientation="Horizontal"
                                                                                     Visibility="{Binding IsSort, Converter={StaticResource BoolToVis}}">
+                                                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
                                                                             <TextBlock Text="{DynamicResource CatBuilder_Card_SrtLookup}"
                                                                                        VerticalAlignment="Center" Margin="0,0,4,0"
                                                                                        Foreground="{DynamicResource CheckupSecondaryText}"
@@ -2182,6 +2352,8 @@
                                                                             <ComboBox ItemsSource="{Binding AvailableCatalogRoles}"
                                                                                       SelectedItem="{Binding SrtLookupRole, Mode=TwoWay}"
                                                                                       Width="60" Height="24" Margin="0,0,10,0"/>
+                                                                            </StackPanel>
+                                                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
                                                                             <TextBlock Text="{DynamicResource CatBuilder_Card_SrcSep}"
                                                                                        VerticalAlignment="Center" Margin="0,0,4,0"
                                                                                        Foreground="{DynamicResource CheckupSecondaryText}"
@@ -2189,11 +2361,13 @@
                                                                             <TextBox Text="{Binding SrtTokenSeparator, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                                                      Width="40" Height="24" Margin="0,0,10,0"
                                                                                      VerticalContentAlignment="Center" Padding="3,0"/>
+                                                                            </StackPanel>
                                                                             <CheckBox Content="{DynamicResource CatBuilder_Card_SrtInvert}"
                                                                                       IsChecked="{Binding SrtIsInvert, Mode=TwoWay}"
                                                                                       VerticalAlignment="Center"
                                                                                       ToolTip="{DynamicResource Tip_SrtInvert}"/>
-                                                                        </StackPanel>
+                                                                        </WrapPanel>
+                                                                        </WrapPanel><!-- close T44 field-area flow wrapper -->
                                                                     </DockPanel>
                                                                     <!-- Display columns (Dropdown / Button / Search) -->
                                                                     <TextBlock DockPanel.Dock="Top"
@@ -2218,6 +2392,8 @@
                                                                             </DataTemplate>
                                                                         </ItemsControl.ItemTemplate>
                                                                     </ItemsControl>
+                                                                    </StackPanel>
+                                                                    </ScrollViewer>
                                                                 </DockPanel>
                                                             </DockPanel>
                                                         </DataTemplate>
@@ -2260,6 +2436,9 @@
                                         Style="{StaticResource CbBtn}"/>
                                 <Button Content="{DynamicResource CatBuilder_Card_AddSort}"
                                         Command="{Binding AddSortToActiveCommand}"
+                                        Style="{StaticResource CbBtn}"/>
+                                <Button Content="{DynamicResource CatBuilder_Card_AddCompose}"
+                                        Command="{Binding AddComposeToActiveCommand}"
                                         Style="{StaticResource CbBtn}"/>
                                 <Button Content="{DynamicResource CatBuilder_Card_AddSearch}"
                                         Command="{Binding AddSearchToActiveCommand}"

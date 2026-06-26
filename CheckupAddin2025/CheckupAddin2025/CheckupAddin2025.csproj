@@ -75,7 +75,10 @@
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<TargetPath>Capabilities\Test_Spezifik.capability.json</TargetPath>
 		</None>
-		<None Update="Resources\Test_Spezifik.catalog.json">
+		<None Update="Resources\Test_Spezifik.feature-kombis.catalog.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<TargetPath>Catalogs\Test_Spezifik.feature-kombis.catalog.json</TargetPath>
+		</None>		<None Update="Resources\Test_Spezifik.catalog.json">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<TargetPath>Catalogs\Test_Spezifik.catalog.json</TargetPath>
 		</None>

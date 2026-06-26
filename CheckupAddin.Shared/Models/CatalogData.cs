@@ -22,6 +22,7 @@ namespace CheckupAddIn.Models
         Auxiliary        = 6, // extra data (notes, tooltips, flags) not shown directly
         GroupSortKey     = 7, // sort order for groups within a tab
         TabSortKey       = 8, // sort order for tabs within the picker
+        Generation       = 9, // T43: scope tag — a value's reading depends on the active generation; blank cell = universal
     }
 
     /// <summary>One user-defined column in a catalog's schema.</summary>

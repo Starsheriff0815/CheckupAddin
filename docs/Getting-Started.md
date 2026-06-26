@@ -53,7 +53,7 @@ And they can Delete their Local Copy from within the Addin, which will Notify th
 Function which will be Listed in the Main Addin on the Dropdown Menu (the "S:" Entries). Each Group can be Named and
 Rearranged via Drag & Drop.
 At the Bottom is a Collapsible "Cards" Palette holding the Card Types Users can Add to the Active Group — Button, Dropdown,
-Link, PairTransform, Prefix/Suffix, Search, MultiPick, Sort and Sync. A Single Click adds the Chosen Card to the Active Group.
+Link, PairTransform, Compose, Prefix/Suffix, Search, MultiPick, Sort and Sync. A Single Click adds the Chosen Card to the Active Group.
 On the Far Right is a Collapsible "Basic Logics" Panel holding Spreadsheet-Style Formula Functions (IF, LOOKUP, CONCATENATE,
 ROUND and more). Clicking one adds a Basic Logic Card with the Function Skeleton Pre-Filled.
 Cards and Basic Logics inside a Group Run from Top to Bottom, so Users can Reorder them to Control which Value Feeds the Next.
@@ -208,11 +208,14 @@ The numbers below correspond to the markers on the screenshot:
     - **Dropdown** — offers a fixed list of catalog choices directly in the row.
     - **Link** — pulls its value from another (partner) field.
     - **PairTransform** — looks up an input value and replaces it with a paired output value from a catalog.
+    - **Compose** — splits a single packed code (no separator) into catalog codes by longest match, looks each up, and writes framed text to a companion field. The no-separator companion to PairTransform — e.g. a two-sided `rdbl` becomes "Front Red / Back Blue", `rdrd` collapses to "Both sides Red". Handles mixed-length codes and can drop codes whose value is empty.
     - **Prefix/Suffix** — adds (or removes) fixed text before or after a value.
     - **Search** — type-ahead search against a catalog's entries.
     - **MultiPick** — lets you pick several values at once, kept in sync with a companion field.
     - **Sort** — sorts multi-part values using a catalog and a separator.
     - **Sync** — keeps a companion field in step with this one.
+
+   A group also has a **⇅ Sort toggle** in its header (next to the Expert `⚡`). When on, the group's assembled output — and the typed short itself — are reordered into the catalog's canonical sequence (its placing/sort columns), so tokens entered in any order come out consistently. An optional per-row **Generation** tag lets a single code mean different things by context (e.g. a sheet-metal edge vs a panel feature), chosen automatically from the input.
 4. **Basic Logics** — The collapsible panel on the right holds spreadsheet-style
    formula functions you can drop into a group. Clicking one adds a card with the
    formula skeleton pre-filled. Examples:

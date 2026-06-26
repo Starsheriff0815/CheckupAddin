@@ -281,6 +281,32 @@
           }
         }
       ]
+    },
+    {
+      "Id": "demo-g13",
+      "Name": "Demo: Compose (Packed Code)",
+      "TargetFieldKey": "IPROP|Title",
+      "IsExpert": false,
+      "Cards": [
+        {
+          "Id": "d13c0001",
+          "Type": "Compose",
+          "Enabled": true,
+          "CatalogId": "demo-001-catalog",
+          "Params": {
+            "LookupRole": "PRI",
+            "OutputRole": "SEC",
+            "CompanionFieldKey": "IPROP|Comments",
+            "ItemPrefixes": "Front ,Back ",
+            "ItemSeparator": " / ",
+            "CollapseWhenEqual": "true",
+            "CollapsedPrefix": "Both sides ",
+            "DropEmptyOutputs": "true",
+            "MaxItems": "2",
+            "OnUnknownToken": "skip"
+          }
+        }
+      ]
     }
   ]
 }

@@ -75,6 +75,7 @@ namespace CheckupAddIn.Services
             AddCardSection(p, L("CardType_Search"),        L("Info_Cards_Search_Desc"));
             AddCardSection(p, L("CardType_PrefixSuffix"),  L("Info_Cards_PrefixSuffix_Desc"));
             AddCardSection(p, L("CardType_Sort"),          L("Info_Cards_Sort_Desc"));
+            AddCardSection(p, L("CardType_Compose"),       L("Info_Cards_Compose_Desc"));
 
             AddRule(p);
 

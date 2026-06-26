@@ -405,9 +405,9 @@ namespace CheckupAddIn.ViewModels
                                               || CardEngine.HasCard(group, CardEngine.CardTypeButton)
                                               || CardEngine.HasCard(group, CardEngine.CardTypeMultiPick);
 
-                                if (!hasPrimary && (CardEngine.HasPairTransformCard(group) || CardEngine.HasBasicLogicCard(group) || CardEngine.HasPrefixSuffixCard(group)))
+                                if (!hasPrimary && (CardEngine.HasPairTransformCard(group) || CardEngine.HasBasicLogicCard(group) || CardEngine.HasPrefixSuffixCard(group) || CardEngine.HasComposeCard(group)))
                                 {
-                                    isFormulaOnlyGroup = true; // Apply always visible: typed value feeds {INPUT} for BL / PairTransform companion mapping, or is inverse-transformed for PrefixSuffix
+                                    isFormulaOnlyGroup = true; // Apply always visible: typed value feeds {INPUT} for BL / PairTransform / Compose companion mapping, or is inverse-transformed for PrefixSuffix
                                 }
                                 else
                                 {
@@ -2229,10 +2229,50 @@ namespace CheckupAddIn.ViewModels
                     if (logicGroup != null && logicCatalog != null)
                     {
                         foreach (var (syncKey, syncVal) in CardEngine.GetSyncWrites(logicGroup, logicCatalog, newValue))
-                        {
                             foreach (var doc in _selectedDocs)
                                 _fieldWriter.WriteFieldValue(doc, syncKey, syncVal);
+
+                        // T43 — sorted-companion assembly path (group ⇅ toggle): detect the generation from the
+                        // typed short, collect tagged segments from PairTransform + each Compose card, sort by
+                        // placing_order, write each companion field ONCE. Legacy append path runs when toggle off.
+                        if (logicGroup.OrderCompanionByPlacing)
+                        {
+                            var (tSrcSep, tLookup, tOutput, tOutSep, tCompField) = CardEngine.GetPairTransformConfig(logicGroup);
+                            string activeGen = string.IsNullOrEmpty(logicGroup.GenerationSignalValues)
+                                ? ""
+                                : CardEngine.DetectGeneration(newValue, logicCatalog, tSrcSep,
+                                    logicGroup.GenerationSignalColumn, logicGroup.GenerationSignalValues,
+                                    logicGroup.GenerationWhenPresent, logicGroup.GenerationWhenAbsent);
+
+                            var segsByField = new Dictionary<string, List<CardEngine.OrderedSegment>>(StringComparer.Ordinal);
+                            if (!string.IsNullOrEmpty(tCompField) && CardEngine.HasPairTransformCard(logicGroup))
+                                segsByField[tCompField] = new List<CardEngine.OrderedSegment>(
+                                    CardEngine.BuildPairTransformSegments(newValue, logicCatalog, tSrcSep, tLookup, tOutput, activeGen));
+                            foreach (var (fieldKey, seg) in CardEngine.GetComposeSegments(
+                                         logicGroup, logicCatalog, newValue,
+                                         id => _catalogStore?.Catalogs.FirstOrDefault(c => c.Id == id), activeGen))
+                            {
+                                if (!segsByField.TryGetValue(fieldKey, out var list))
+                                    segsByField[fieldKey] = list = new List<CardEngine.OrderedSegment>();
+                                list.Add(seg);
+                            }
+                            foreach (var kv in segsByField)
+                            {
+                                string assembled = CardEngine.AssembleSorted(kv.Value, tOutSep);
+                                foreach (var doc in _selectedDocs)
+                                    _fieldWriter.WriteFieldValue(doc, kv.Key, assembled);
+                            }
+
+                            // T43 — also canonicalize the SHORT (writeFieldKey) so SPEZIFIK1 matches the sorted long.
+                            string sortedShort = CardEngine.BuildSortedShort(
+                                logicGroup, logicCatalog, newValue, tSrcSep, tLookup, activeGen,
+                                id => _catalogStore?.Catalogs.FirstOrDefault(c => c.Id == id));
+                            if (!string.IsNullOrEmpty(sortedShort) && sortedShort != newValue)
+                                foreach (var doc in _selectedDocs)
+                                    _fieldWriter.WriteFieldValue(doc, writeFieldKey, sortedShort);
                         }
+                        else
+                        {
 
                         if (CardEngine.HasPairTransformCard(logicGroup))
                         {
@@ -2249,10 +2289,31 @@ namespace CheckupAddIn.ViewModels
                                     _fieldWriter.WriteFieldValue(doc, compField, transformed);
                             }
                         }
+
+                        // Compose card (Task #41/#42): expand packed codes; Split Mode cards can
+                        // append after PairTransform wrote the direct-match portion. Passthrough
+                        // (null result) and empty-append results are skipped inside GetComposeWritesEx.
+                        foreach (var (composeKey, composeVal, isAppend, appendSep) in
+                            CardEngine.GetComposeWritesEx(logicGroup, logicCatalog, newValue,
+                                id => _catalogStore?.Catalogs.FirstOrDefault(c => c.Id == id)))
+                        {
+                            foreach (var doc in _selectedDocs)
+                            {
+                                string finalVal = composeVal;
+                                if (isAppend)
+                                {
+                                    string existing = _catalogBuilder.ResolveFieldValue(composeKey, doc) ?? "";
+                                    if (!string.IsNullOrEmpty(existing))
+                                        finalVal = existing + appendSep + composeVal;
+                                }
+                                _fieldWriter.WriteFieldValue(doc, composeKey, finalVal);
+                            }
+                        }
+                        } // end else — legacy append path (T43 sorted path above)
                     }
                     else if (logicGroup != null)
                     {
-                        DiagLogger.Log("bl", $"no primary catalog for group '{logicGroup.Id}' — Sync/PairTransform skipped; BL runs below");
+                        DiagLogger.Log("bl", $"no primary catalog for group '{logicGroup.Id}' — Sync/PairTransform/Compose skipped; BL runs below");
                     }
 
                     // Basic Logic cards run regardless of whether the group has a primary catalog.

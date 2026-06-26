@@ -37,6 +37,19 @@ namespace CheckupAddIn.Models
         /// $[FIELD_KEY] syntax. Default false (Normal group).
         /// </summary>
         public bool IsExpert { get; set; } = false;
+
+        // ── T43: sorted-companion assembly + generation scope (all default off/empty → legacy behaviour) ──
+        /// <summary>T43 sort toggle (D-sort-1). When true, the companion value is assembled by sorting every
+        /// contributing segment on placing_order instead of the append chain. Surfaced as the ⇅ group toggle.</summary>
+        public bool   OrderCompanionByPlacing { get; set; } = false;
+        /// <summary>T43 generation detection: catalog column (role badge or key/label) whose value flags the generation.</summary>
+        public string GenerationSignalColumn  { get; set; } = "";
+        /// <summary>T43 generation detection: comma-separated category values whose presence ⇒ the "present" generation (Paneel).</summary>
+        public string GenerationSignalValues  { get; set; } = "";
+        /// <summary>T43 generation name when a signal token is present (e.g. "Paneel").</summary>
+        public string GenerationWhenPresent   { get; set; } = "";
+        /// <summary>T43 generation name when no signal token is present (e.g. "Blech").</summary>
+        public string GenerationWhenAbsent    { get; set; } = "";
     }
 
     /// <summary>

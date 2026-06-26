@@ -133,6 +133,7 @@ namespace CheckupAddIn.Services
             ColumnRole.GroupSortKey     => "GST",
             ColumnRole.TabSortKey       => "TST",
             ColumnRole.Auxiliary        => "AUX",
+            ColumnRole.Generation       => "GEN",
             _                           => "",
         };
 
@@ -146,8 +147,86 @@ namespace CheckupAddIn.Services
             "GST" => ColumnRole.GroupSortKey,
             "TST" => ColumnRole.TabSortKey,
             "AUX" => ColumnRole.Auxiliary,
+            "GEN" => ColumnRole.Generation,
             _     => ColumnRole.None,
         };
+
+        /// <summary>
+        /// T43 — generation scope. True when <paramref name="entry"/> is visible under the active generation.
+        /// A Generation-roled (GEN) cell tags a row to one generation; a BLANK cell is universal (matches any
+        /// scope). When no generation is active, or the catalog has no Generation column, every entry is in
+        /// scope — so the filter is inert until a catalog opts in AND a scope is supplied.
+        /// </summary>
+        internal static bool EntryInGenerationScope(CatalogData catalog, CatalogEntry entry, string activeGeneration)
+        {
+            if (string.IsNullOrWhiteSpace(activeGeneration) || catalog == null || entry == null) return true;
+            string genKey = GetColumnKey(catalog, ColumnRole.Generation, 1);
+            if (string.IsNullOrEmpty(genKey)) return true;                          // catalog has no Generation column
+            if (!entry.Values.TryGetValue(genKey, out string g) || string.IsNullOrWhiteSpace(g))
+                return true;                                                        // blank cell = universal
+            return string.Equals(g.Trim(), activeGeneration.Trim(), StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// T43 — category scope. True when <paramref name="entry"/>'s category cell (resolved via
+        /// <paramref name="categoryColumn"/> — role badge or key/label) <b>starts with</b> any of the
+        /// comma-separated <paramref name="categoryValues"/> (case-insensitive). Starts-with handles both a
+        /// clean category column ("Material") and a "CategoryNNN" convention ("Material033"). A blank filter or
+        /// unresolved column means "no filter" (in scope); a present filter with no match excludes the entry.
+        /// </summary>
+        internal static bool EntryInCategory(CatalogData catalog, CatalogEntry entry, string categoryColumn, string categoryValues)
+        {
+            if (string.IsNullOrWhiteSpace(categoryValues) || catalog == null || entry == null) return true;
+            string catKey = ResolveColumnKey(catalog, categoryColumn);
+            if (string.IsNullOrEmpty(catKey)) return true;
+            if (!entry.Values.TryGetValue(catKey, out string cv) || cv == null) return false;
+            string cell = cv.Trim();
+            foreach (var raw in categoryValues.Split(','))
+            {
+                string c = raw.Trim();
+                if (c.Length > 0 && cell.StartsWith(c, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// T43 — derive the active generation from a typed short. Splits <paramref name="sourceShort"/> on
+        /// <paramref name="sourceSeparator"/>; if ANY token matches (by PRI) a catalog row whose
+        /// <paramref name="signalCategoryColumn"/> value is one of the comma-separated
+        /// <paramref name="signalCategoryValuesCsv"/>, returns <paramref name="generationWhenPresent"/> (e.g.
+        /// Paneel); otherwise <paramref name="generationWhenAbsent"/> (e.g. Blech). The signal is data-driven
+        /// (a catalog category such as Füllung/Schaum), NOT a hard-coded token list. Detection runs BEFORE
+        /// scoping, so it is itself unscoped.
+        /// </summary>
+        public static string DetectGeneration(
+            string sourceShort, CatalogData catalog, string sourceSeparator,
+            string signalCategoryColumn, string signalCategoryValuesCsv,
+            string generationWhenPresent, string generationWhenAbsent)
+        {
+            if (catalog == null || string.IsNullOrEmpty(sourceShort)) return generationWhenAbsent;
+            string catKey = ResolveColumnKey(catalog, signalCategoryColumn);   // role badge OR column key/label
+            string priKey = GetColumnKey(catalog, ColumnRole.PrimaryDisplay, 1);
+            if (string.IsNullOrEmpty(catKey) || string.IsNullOrEmpty(priKey)) return generationWhenAbsent;
+
+            var signal = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var v in (signalCategoryValuesCsv ?? "").Split(','))
+            { string vv = v.Trim(); if (vv.Length > 0) signal.Add(vv); }
+            if (signal.Count == 0) return generationWhenAbsent;
+
+            var tokenSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var t in sourceShort.Split(new[] { sourceSeparator ?? "-" }, StringSplitOptions.RemoveEmptyEntries))
+            { string tt = t.Trim(); if (tt.Length > 0) tokenSet.Add(tt); }
+
+            foreach (var entry in catalog.Entries)
+            {
+                if (!entry.Values.TryGetValue(priKey, out string pri) || string.IsNullOrEmpty(pri) || !tokenSet.Contains(pri))
+                    continue;
+                if (entry.Values.TryGetValue(catKey, out string cat) && cat != null &&
+                    signal.Any(s => cat.Trim().StartsWith(s, StringComparison.OrdinalIgnoreCase)))
+                    return generationWhenPresent;
+            }
+            return generationWhenAbsent;
+        }
 
         // ── Basic helpers ─────────────────────────────────────────────────────
 
@@ -242,7 +321,8 @@ namespace CheckupAddIn.Services
                 if (!card.Enabled) continue;
                 if (card.Type == CardTypeDropdown    || card.Type == CardTypeButton   ||
                     card.Type == CardTypeSearch      || card.Type == CardTypeMultiPick ||
-                    card.Type == CardTypePairTransform || card.Type == CardTypeSort)
+                    card.Type == CardTypePairTransform || card.Type == CardTypeSort ||
+                    card.Type == CardTypeCompose)
                     return string.IsNullOrEmpty(card.CatalogId) ? null : card.CatalogId;
             }
             return null;
@@ -621,7 +701,8 @@ namespace CheckupAddIn.Services
         /// </summary>
         public static string BuildPairTransformValue(
             string sourceValue, CatalogData catalog,
-            string sourceSep, string lookupRole, string outputRole, string outputSep)
+            string sourceSep, string lookupRole, string outputRole, string outputSep,
+            string activeGeneration = null)
         {
             if (catalog == null || string.IsNullOrEmpty(sourceValue)) return "";
 
@@ -643,6 +724,7 @@ namespace CheckupAddIn.Services
                 if (token.Length == 0) continue;
                 foreach (var entry in catalog.Entries)
                 {
+                    if (!EntryInGenerationScope(catalog, entry, activeGeneration)) continue;
                     entry.Values.TryGetValue(lKey, out string lVal);
                     if (!string.Equals(lVal, token, StringComparison.OrdinalIgnoreCase)) continue;
                     entry.Values.TryGetValue(oKey, out string oVal);
@@ -651,6 +733,470 @@ namespace CheckupAddIn.Services
                 }
             }
             return string.Join(outputSep ?? "", parts);
+        }
+
+        // ── T43 sorted assembly ───────────────────────────────────────────────────
+
+        /// <summary>One ordered piece of an assembled companion value, tagged with its catalog sort keys.</summary>
+        public struct OrderedSegment
+        {
+            public int Placing;    // primary sort key — placing_order (GroupSortKey role)
+            public int Internal;   // secondary sort key — internal_order (SortKey role)
+            public int Order;      // tertiary tiebreak — stable production order
+            public string Text;    // the long-form text
+            public OrderedSegment(int placing, int @internal, int order, string text)
+            { Placing = placing; Internal = @internal; Order = order; Text = text; }
+        }
+
+        private static int ReadIntCell(CatalogEntry entry, string key)
+            => key != null && entry.Values.TryGetValue(key, out string v) && int.TryParse((v ?? "").Trim(), out int n) ? n : 0;
+
+        /// <summary>
+        /// T43 — PairTransform as ORDERED SEGMENTS (for the sorted-assembly path). One segment per direct-match
+        /// token, carrying its catalog placing_order (GroupSortKey) + internal_order (SortKey) for sorting, plus
+        /// its input position as a stable tiebreak. Generation-scoped like <see cref="BuildPairTransformValue"/>.
+        /// </summary>
+        public static List<OrderedSegment> BuildPairTransformSegments(
+            string sourceValue, CatalogData catalog, string sourceSep,
+            string lookupRole, string outputRole, string activeGeneration = null)
+        {
+            var segs = new List<OrderedSegment>();
+            if (catalog == null || string.IsNullOrEmpty(sourceValue)) return segs;
+            string[] tokens = sourceValue.Split(new[] { sourceSep ?? "-" }, StringSplitOptions.RemoveEmptyEntries);
+            ParseRoleBadge(lookupRole ?? "PRI", out ColumnRole lRole, out int lIdx);
+            ParseRoleBadge(outputRole ?? "SEC", out ColumnRole oRole, out int oIdx);
+            string lKey = lRole != ColumnRole.None ? GetColumnKey(catalog, lRole, lIdx) : null;
+            string oKey = oRole != ColumnRole.None ? GetColumnKey(catalog, oRole, oIdx) : null;
+            if (lKey == null || oKey == null) return segs;
+            string pKey = GetColumnKey(catalog, ColumnRole.GroupSortKey, 1);   // placing_order
+            string iKey = GetColumnKey(catalog, ColumnRole.SortKey, 1);        // internal_order
+            int pos = 0;
+            foreach (string rawToken in tokens)
+            {
+                string token = rawToken.Trim();
+                if (token.Length != 0)
+                    foreach (var entry in catalog.Entries)
+                    {
+                        if (!EntryInGenerationScope(catalog, entry, activeGeneration)) continue;
+                        entry.Values.TryGetValue(lKey, out string lVal);
+                        if (!string.Equals(lVal, token, StringComparison.OrdinalIgnoreCase)) continue;
+                        entry.Values.TryGetValue(oKey, out string oVal);
+                        if (!string.IsNullOrEmpty(oVal))
+                            segs.Add(new OrderedSegment(ReadIntCell(entry, pKey), ReadIntCell(entry, iKey), pos, oVal));
+                        break;
+                    }
+                pos++;
+            }
+            return segs;
+        }
+
+        /// <summary>
+        /// T43 — sort a set of <see cref="OrderedSegment"/>s by (placing_order, internal_order, production order),
+        /// drop empties, and join with <paramref name="separator"/>. The canonical-order assembly that replaces
+        /// the append chain for the SPEZIFIK pipeline.
+        /// </summary>
+        public static string AssembleSorted(IEnumerable<OrderedSegment> segments, string separator)
+        {
+            if (segments == null) return "";
+            var ordered = segments
+                .Where(s => !string.IsNullOrEmpty(s.Text))
+                .OrderBy(s => s.Placing).ThenBy(s => s.Internal).ThenBy(s => s.Order)
+                .Select(s => s.Text);
+            return string.Join(separator ?? ", ", ordered);
+        }
+
+        /// <summary>
+        /// T43 — canonicalize the SHORT form: reorder <paramref name="sourceValue"/>'s tokens by the same placing
+        /// the sorted assembly uses, so the short matches the long's order. A token's placing = its direct-match
+        /// catalog GroupSortKey (generation-scoped); a packed token with no direct match takes the OutputPlacing of
+        /// the first enabled Compose card that expands it. Unrecognized tokens keep their relative order, last.
+        /// </summary>
+        public static string BuildSortedShort(
+            CardGroup group, CatalogData primaryCatalog, string sourceValue,
+            string sourceSep, string lookupRole, string activeGeneration,
+            Func<string, CatalogData> getCatalogById)
+        {
+            if (group == null || primaryCatalog == null || string.IsNullOrEmpty(sourceValue)) return sourceValue;
+            string sep = string.IsNullOrEmpty(sourceSep) ? "-" : sourceSep;
+            string[] tokens = sourceValue.Split(new[] { sep }, StringSplitOptions.RemoveEmptyEntries);
+            if (tokens.Length <= 1) return sourceValue;
+            string pKey = GetColumnKey(primaryCatalog, ColumnRole.GroupSortKey, 1);
+            ParseRoleBadge(lookupRole ?? "PRI", out ColumnRole lRole, out int lIdx);
+            string lKey = lRole != ColumnRole.None ? GetColumnKey(primaryCatalog, lRole, lIdx) : null;
+
+            var ranked = new List<(int placing, int idx, string token)>();
+            for (int i = 0; i < tokens.Length; i++)
+            {
+                string token = tokens[i].Trim();
+                if (token.Length == 0) continue;
+                int placing = int.MaxValue;
+                bool direct = false;
+                if (lKey != null)
+                    foreach (var e in primaryCatalog.Entries)
+                    {
+                        if (!EntryInGenerationScope(primaryCatalog, e, activeGeneration)) continue;
+                        if (e.Values.TryGetValue(lKey, out string lv) && string.Equals(lv, token, StringComparison.OrdinalIgnoreCase))
+                        { placing = ReadIntCell(e, pKey); direct = true; break; }
+                    }
+                if (!direct)
+                    foreach (var card in group.Cards)
+                    {
+                        if (!card.Enabled || card.Type != CardTypeCompose) continue;
+                        var cfg = ReadComposeCard(card);
+                        string r;
+                        if (cfg.IsSplitMode)
+                        {
+                            CatalogData fb = (!string.IsNullOrEmpty(cfg.FallbackCatalogId) && getCatalogById != null)
+                                ? getCatalogById(cfg.FallbackCatalogId) ?? primaryCatalog : primaryCatalog;
+                            r = BuildComposeSplitValue(token, primaryCatalog, fb, cfg, activeGeneration);
+                        }
+                        else r = BuildComposeValue(token, primaryCatalog, cfg, activeGeneration);
+                        if (!string.IsNullOrEmpty(r)) { placing = cfg.OutputPlacing; break; }
+                    }
+                ranked.Add((placing, i, token));
+            }
+            return string.Join(sep, ranked.OrderBy(x => x.placing).ThenBy(x => x.idx).Select(x => x.token));
+        }
+
+        // ── Compose card ─────────────────────────────────────────────────────────
+        // The no-separator sibling of PairTransform: splits ONE packed field value into catalog
+        // codes by LONGEST-MATCH (handles mixed-length codes that no literal-separator split can),
+        // looks each up, and frames the result (per-item prefixes, collapse-when-equal, empty-drop).
+        // All framing is parameterised, so the card itself stays domain-neutral.
+        public const string CardTypeCompose              = "Compose";
+        public const string ParamComposeMaxItems         = "MaxItems";            // 0/absent = unlimited
+        public const string ParamComposeItemSeparator    = "ItemSeparator";       // joins differing items
+        public const string ParamComposeItemPrefixes     = "ItemPrefixes";        // comma-separated, positional; spaces preserved
+        public const string ParamComposeCollapseWhenEqual= "CollapseWhenEqual";   // "true" collapses identical codes into one
+        public const string ParamComposeCollapsedPrefix  = "CollapsedPrefix";     // prefix used in the collapsed case
+        public const string ParamComposeDropEmptyOutputs = "DropEmptyOutputs";    // "false" keeps empty-output codes
+        public const string ParamComposeOnUnknownToken       = "OnUnknownToken";         // skip | keepRaw | passthrough
+        // ── Split Mode params ─────────────────────────────────────────────────
+        public const string ParamComposeSourceSeparator       = "SourceSeparator";        // enables split mode; splits source on this before processing
+        public const string ParamComposeTokenOutputSeparator  = "TokenOutputSeparator";   // joins per-token outputs; default ", "
+        public const string ParamComposeFallbackCatalogId     = "ComposeFallbackCatalogId"; // catalog for sub-tokenization (avoids Merkmal collisions)
+        public const string ParamComposeOnDirectMatch         = "OnDirectMatch";           // include (default) | skip
+        public const string ParamComposeOutputMode            = "OutputMode";              // replace (default) | append
+        public const string ParamComposeAppendSeparator       = "AppendSeparator";         // separator when appending to non-empty companion; default ", "
+        public const string ParamComposeFallbackCategoryColumn = "ComposeFallbackCategoryColumn"; // T43: column (role badge or key/label) holding the category
+        public const string ParamComposeFallbackCategory       = "ComposeFallbackCategory";       // T43: restrict sub-tokenization to this category (replaces a separate sub-catalog)
+        public const string ParamComposeOutputPlacing          = "OutputPlacing";                 // T43: this card's segment rank in the sorted assembly (placing_order)
+        public const string ParamComposeOutputInternal         = "OutputInternal";                // T43: secondary rank within the same placing
+
+        /// <summary>Resolved Compose-card config. Reuses ParamLookupRole / ParamOutputRole / ParamCompanionFieldKey.</summary>
+        public sealed class ComposeConfig
+        {
+            public string LookupRole        { get; set; } = "PRI";
+            public string OutputRole        { get; set; } = "SEC";
+            public string CompanionFieldKey { get; set; } = "";
+            public int    MaxItems          { get; set; } = 0;       // 0 = unlimited
+            public string ItemSeparator     { get; set; } = " / ";
+            public IReadOnlyList<string> ItemPrefixes { get; set; } = Array.Empty<string>();
+            public bool   CollapseWhenEqual { get; set; } = false;
+            public string CollapsedPrefix   { get; set; } = "";
+            public bool   DropEmptyOutputs  { get; set; } = true;
+            public string OnUnknownToken    { get; set; } = "skip";
+            // Split Mode
+            public string SourceSeparator       { get; set; } = "";
+            public string TokenOutputSeparator  { get; set; } = ", ";
+            public string FallbackCatalogId     { get; set; } = "";
+            public string OnDirectMatch         { get; set; } = "include";  // "include" | "skip"
+            public string OutputMode            { get; set; } = "replace";  // "replace" | "append"
+            public string AppendSeparator       { get; set; } = ", ";
+            public string FallbackCategoryColumn { get; set; } = "";   // T43: column holding the category (role badge or key/label)
+            public string FallbackCategory       { get; set; } = "";   // T43: restrict sub-tokenization to this category value
+            public int    OutputPlacing          { get; set; } = 0;    // T43: segment rank in the sorted assembly (placing_order)
+            public int    OutputInternal         { get; set; } = 0;    // T43: secondary rank within the same placing
+            public bool   IsSplitMode           => !string.IsNullOrEmpty(SourceSeparator);
+        }
+
+        /// <summary>Returns true when the group has at least one enabled Compose card.</summary>
+        public static bool HasComposeCard(CardGroup group)
+            => group?.Cards.Any(c => c.Enabled && c.Type == CardTypeCompose) == true;
+
+        /// <summary>Reads the first enabled Compose card's config (for the editor). Defaults when none found.</summary>
+        public static ComposeConfig GetComposeConfig(CardGroup group)
+        {
+            if (group != null)
+                foreach (var card in group.Cards)
+                    if (card.Enabled && card.Type == CardTypeCompose)
+                        return ReadComposeCard(card);
+            return new ComposeConfig();
+        }
+
+        private static ComposeConfig ReadComposeCard(CapabilityCard card)
+        {
+            var cfg = new ComposeConfig();
+            if (card == null) return cfg;
+            if (card.Params.TryGetValue(ParamLookupRole,             out string lr) && !string.IsNullOrEmpty(lr)) cfg.LookupRole = lr;
+            if (card.Params.TryGetValue(ParamOutputRole,             out string or) && !string.IsNullOrEmpty(or)) cfg.OutputRole = or;
+            if (card.Params.TryGetValue(ParamCompanionFieldKey,      out string comp)) cfg.CompanionFieldKey = comp ?? "";
+            if (card.Params.TryGetValue(ParamComposeMaxItems,        out string mx) && int.TryParse(mx, out int m) && m >= 0) cfg.MaxItems = m;
+            if (card.Params.TryGetValue(ParamComposeItemSeparator,   out string sep) && sep != null) cfg.ItemSeparator = sep;
+            if (card.Params.TryGetValue(ParamComposeItemPrefixes,    out string pfx) && !string.IsNullOrEmpty(pfx)) cfg.ItemPrefixes = pfx.Split(',');
+            if (card.Params.TryGetValue(ParamComposeCollapseWhenEqual, out string col)) cfg.CollapseWhenEqual = string.Equals(col, "true", StringComparison.OrdinalIgnoreCase);
+            if (card.Params.TryGetValue(ParamComposeCollapsedPrefix, out string cp) && cp != null) cfg.CollapsedPrefix = cp;
+            if (card.Params.TryGetValue(ParamComposeDropEmptyOutputs, out string de)) cfg.DropEmptyOutputs = !string.Equals(de, "false", StringComparison.OrdinalIgnoreCase);
+            if (card.Params.TryGetValue(ParamComposeOnUnknownToken,       out string ou)  && !string.IsNullOrEmpty(ou))  cfg.OnUnknownToken       = ou;
+            if (card.Params.TryGetValue(ParamComposeSourceSeparator,      out string ss)  && ss != null)                   cfg.SourceSeparator       = ss;
+            if (card.Params.TryGetValue(ParamComposeTokenOutputSeparator, out string tos) && tos != null)                  cfg.TokenOutputSeparator  = tos;
+            if (card.Params.TryGetValue(ParamComposeFallbackCatalogId,    out string fci) && !string.IsNullOrEmpty(fci))   cfg.FallbackCatalogId     = fci;
+            if (card.Params.TryGetValue(ParamComposeOnDirectMatch,        out string odm) && !string.IsNullOrEmpty(odm))   cfg.OnDirectMatch         = odm;
+            if (card.Params.TryGetValue(ParamComposeOutputMode,           out string om)  && !string.IsNullOrEmpty(om))    cfg.OutputMode            = om;
+            if (card.Params.TryGetValue(ParamComposeAppendSeparator,      out string aps) && aps != null)                  cfg.AppendSeparator       = aps;
+            if (card.Params.TryGetValue(ParamComposeFallbackCategoryColumn, out string fcc) && !string.IsNullOrEmpty(fcc)) cfg.FallbackCategoryColumn = fcc;
+            if (card.Params.TryGetValue(ParamComposeFallbackCategory,       out string fcv) && !string.IsNullOrEmpty(fcv)) cfg.FallbackCategory       = fcv;
+            if (card.Params.TryGetValue(ParamComposeOutputPlacing,          out string opl) && int.TryParse(opl, out int opli)) cfg.OutputPlacing  = opli;
+            if (card.Params.TryGetValue(ParamComposeOutputInternal,         out string oin) && int.TryParse(oin, out int oini)) cfg.OutputInternal = oini;
+            return cfg;
+        }
+
+        /// <summary>
+        /// Splits <paramref name="sourceValue"/> into catalog codes by longest-match against the
+        /// LookupRole column (case-insensitive), looks up each code's OutputRole value, and frames the
+        /// result. Returns "" when nothing is produced; returns null ONLY when the value cannot be fully
+        /// tokenised AND OnUnknownToken="passthrough" (signal to the caller: leave the companion untouched).
+        /// </summary>
+        public static string BuildComposeValue(string sourceValue, CatalogData catalog, ComposeConfig cfg, string activeGeneration = null)
+        {
+            if (cfg == null || catalog == null || string.IsNullOrEmpty(sourceValue)) return "";
+            string lookupKey = GetRoleKey(catalog, string.IsNullOrEmpty(cfg.LookupRole) ? "PRI" : cfg.LookupRole);
+            string outputKey = GetRoleKey(catalog, string.IsNullOrEmpty(cfg.OutputRole) ? "SEC" : cfg.OutputRole);
+            if (lookupKey == null || outputKey == null) return "";
+
+            var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var e in catalog.Entries)
+                if (EntryInGenerationScope(catalog, e, activeGeneration) &&
+                    EntryInCategory(catalog, e, cfg.FallbackCategoryColumn, cfg.FallbackCategory) &&
+                    e.Values.TryGetValue(lookupKey, out string lv) && !string.IsNullOrEmpty(lv))
+                    candidates.Add(lv);
+            if (candidates.Count == 0) return "";
+            var lengthsDesc = candidates.Select(s => s.Length).Distinct().OrderByDescending(x => x).ToList();
+
+            var (codes, full) = LongestMatchTokenize(sourceValue, candidates, lengthsDesc, cfg.MaxItems);
+            string mode = (cfg.OnUnknownToken ?? "skip").ToLowerInvariant();
+            if (!full)
+            {
+                if (mode == "passthrough") return null;
+                if (mode == "keepraw")     return sourceValue;
+                // "skip": continue with whatever parsed
+            }
+            if (codes.Count == 0)
+                return mode == "keepraw" ? sourceValue : (mode == "passthrough" ? null : "");
+
+            var items = new List<(string code, string output)>(codes.Count);
+            foreach (var code in codes)
+            {
+                string output = "";
+                foreach (var e in catalog.Entries)
+                    if (EntryInGenerationScope(catalog, e, activeGeneration) &&
+                        EntryInCategory(catalog, e, cfg.FallbackCategoryColumn, cfg.FallbackCategory) &&
+                        e.Values.TryGetValue(lookupKey, out string lv) &&
+                        string.Equals(lv, code, StringComparison.OrdinalIgnoreCase))
+                    { e.Values.TryGetValue(outputKey, out output); output ??= ""; break; }
+                items.Add((code, output));
+            }
+            if (cfg.DropEmptyOutputs) items = items.Where(it => !string.IsNullOrEmpty(it.output)).ToList();
+            if (items.Count == 0) return "";
+
+            if (cfg.CollapseWhenEqual && items.Count >= 2 &&
+                items.All(it => string.Equals(it.code, items[0].code, StringComparison.OrdinalIgnoreCase)))
+                return (cfg.CollapsedPrefix ?? "") + items[0].output;
+
+            var parts = new List<string>(items.Count);
+            for (int i = 0; i < items.Count; i++)
+            {
+                string prefix = (cfg.ItemPrefixes != null && i < cfg.ItemPrefixes.Count) ? cfg.ItemPrefixes[i] : "";
+                parts.Add((prefix ?? "") + items[i].output);
+            }
+            return string.Join(cfg.ItemSeparator ?? "", parts);
+        }
+
+        /// <summary>
+        /// Longest-match tokeniser: walks <paramref name="value"/> left→right, at each position taking the
+        /// LONGEST candidate code that prefixes the remainder. Stops (full=false) on the first position with
+        /// no match, or once <paramref name="maxItems"/> (when &gt;0) codes are taken with input still
+        /// remaining. full=true only when the whole value is consumed.
+        /// </summary>
+        private static (List<string> codes, bool full) LongestMatchTokenize(
+            string value, HashSet<string> candidates, List<int> lengthsDesc, int maxItems)
+        {
+            var codes = new List<string>();
+            int pos = 0, n = value.Length;
+            while (pos < n)
+            {
+                if (maxItems > 0 && codes.Count >= maxItems) return (codes, false);
+                bool matched = false;
+                foreach (int len in lengthsDesc)
+                {
+                    if (pos + len > n) continue;
+                    string chunk = value.Substring(pos, len);
+                    if (candidates.Contains(chunk)) { codes.Add(chunk); pos += len; matched = true; break; }
+                }
+                if (!matched) return (codes, false);
+            }
+            return (codes, true);
+        }
+
+        /// <summary>
+        /// Returns all (fieldKey, value) writes from enabled Compose cards for <paramref name="sourceValue"/>.
+        /// A card whose BuildComposeValue returns null (passthrough on un-tokenisable input) is skipped.
+        /// </summary>
+        public static IEnumerable<(string FieldKey, string Value)> GetComposeWrites(
+            CardGroup group, CatalogData catalog, string sourceValue)
+        {
+            if (group == null || catalog == null) yield break;
+            foreach (var card in group.Cards)
+            {
+                if (!card.Enabled || card.Type != CardTypeCompose) continue;
+                var cfg = ReadComposeCard(card);
+                if (string.IsNullOrEmpty(cfg.CompanionFieldKey)) continue;
+                string result = BuildComposeValue(sourceValue, catalog, cfg);
+                if (result == null) continue;   // passthrough → leave companion untouched
+                yield return (cfg.CompanionFieldKey, result);
+            }
+        }
+
+        /// <summary>
+        /// Split-Mode-aware variant of <see cref="GetComposeWrites"/>.
+        /// Returns one write instruction per enabled Compose card. The tuple includes
+        /// <c>IsAppend</c> (true when OutputMode=append) and <c>AppendSeparator</c> so the
+        /// caller can combine the new value with the companion field's existing content.
+        /// <paramref name="getCatalogById"/> resolves <see cref="ComposeConfig.FallbackCatalogId"/>
+        /// for split-mode cards; pass null to always use <paramref name="primaryCatalog"/>.
+        /// </summary>
+        public static IEnumerable<(string FieldKey, string Value, bool IsAppend, string AppendSeparator)>
+            GetComposeWritesEx(
+                CardGroup group, CatalogData primaryCatalog, string sourceValue,
+                Func<string, CatalogData> getCatalogById = null)
+        {
+            if (group == null || primaryCatalog == null) yield break;
+            foreach (var card in group.Cards)
+            {
+                if (!card.Enabled || card.Type != CardTypeCompose) continue;
+                var cfg = ReadComposeCard(card);
+                if (string.IsNullOrEmpty(cfg.CompanionFieldKey)) continue;
+
+                string result;
+                if (cfg.IsSplitMode)
+                {
+                    CatalogData fallback = (!string.IsNullOrEmpty(cfg.FallbackCatalogId) && getCatalogById != null)
+                        ? getCatalogById(cfg.FallbackCatalogId) ?? primaryCatalog
+                        : primaryCatalog;
+                    result = BuildComposeSplitValue(sourceValue, primaryCatalog, fallback, cfg);
+                }
+                else
+                {
+                    result = BuildComposeValue(sourceValue, primaryCatalog, cfg);
+                }
+
+                if (result == null) continue;   // passthrough — leave companion untouched
+                bool isAppend = string.Equals(cfg.OutputMode, "append", StringComparison.OrdinalIgnoreCase);
+                if (isAppend && result == "") continue;  // nothing to append — skip to avoid spurious writes
+                yield return (cfg.CompanionFieldKey, result, isAppend, cfg.AppendSeparator);
+            }
+        }
+
+        /// <summary>
+        /// T43 — Compose cards as ORDERED SEGMENTS for the sorted-assembly path. Each enabled Compose card
+        /// produces one segment for its companion field, tagged with the card's <see cref="ComposeConfig.OutputPlacing"/>
+        /// / <see cref="ComposeConfig.OutputInternal"/>; generation-scoped via <paramref name="activeGeneration"/>.
+        /// The Order tiebreak (100000+) places compose segments after direct PairTransform tokens of equal placing.
+        /// </summary>
+        public static IEnumerable<(string FieldKey, OrderedSegment Segment)> GetComposeSegments(
+            CardGroup group, CatalogData primaryCatalog, string sourceValue,
+            Func<string, CatalogData> getCatalogById, string activeGeneration)
+        {
+            if (group == null || primaryCatalog == null) yield break;
+            int order = 0;
+            foreach (var card in group.Cards)
+            {
+                if (!card.Enabled || card.Type != CardTypeCompose) continue;
+                var cfg = ReadComposeCard(card);
+                if (string.IsNullOrEmpty(cfg.CompanionFieldKey)) continue;
+
+                string result;
+                if (cfg.IsSplitMode)
+                {
+                    CatalogData fallback = (!string.IsNullOrEmpty(cfg.FallbackCatalogId) && getCatalogById != null)
+                        ? getCatalogById(cfg.FallbackCatalogId) ?? primaryCatalog
+                        : primaryCatalog;
+                    result = BuildComposeSplitValue(sourceValue, primaryCatalog, fallback, cfg, activeGeneration);
+                }
+                else
+                {
+                    result = BuildComposeValue(sourceValue, primaryCatalog, cfg, activeGeneration);
+                }
+
+                if (string.IsNullOrEmpty(result)) continue;   // passthrough / empty → no segment
+                yield return (cfg.CompanionFieldKey,
+                    new OrderedSegment(cfg.OutputPlacing, cfg.OutputInternal, 100000 + order, result));
+                order++;
+            }
+        }
+
+        /// <summary>
+        /// Split-Mode expansion: splits <paramref name="sourceValue"/> on
+        /// <see cref="ComposeConfig.SourceSeparator"/>, then for each outer token attempts a
+        /// direct PRI→SEC lookup in <paramref name="primaryCatalog"/>; on miss, falls back to
+        /// <see cref="BuildComposeValue"/> against <paramref name="fallbackCatalog"/>.
+        /// <see cref="ComposeConfig.OnDirectMatch"/> controls whether direct-match tokens
+        /// contribute to the output ("include") or are silently skipped ("skip").
+        /// All per-token outputs are joined with <see cref="ComposeConfig.TokenOutputSeparator"/>.
+        /// </summary>
+        public static string BuildComposeSplitValue(
+            string sourceValue, CatalogData primaryCatalog, CatalogData fallbackCatalog, ComposeConfig cfg,
+            string activeGeneration = null)
+        {
+            if (cfg == null || primaryCatalog == null || string.IsNullOrEmpty(sourceValue)) return "";
+            string[] outerTokens = sourceValue.Split(
+                new[] { cfg.SourceSeparator }, StringSplitOptions.RemoveEmptyEntries);
+            bool skipDirect = string.Equals(cfg.OnDirectMatch, "skip", StringComparison.OrdinalIgnoreCase);
+            var parts = new List<string>();
+            foreach (string rawToken in outerTokens)
+            {
+                string token = rawToken.Trim();
+                if (token.Length == 0) continue;
+                string directSec = FindDirectMatchSec(token, primaryCatalog, cfg.LookupRole, cfg.OutputRole, activeGeneration);
+                if (directSec != null)
+                {
+                    if (!skipDirect && (!string.IsNullOrEmpty(directSec) || !cfg.DropEmptyOutputs))
+                        parts.Add(directSec);
+                    continue;
+                }
+                // No direct match → attempt Compose sub-tokenization in fallback catalog
+                string subResult = BuildComposeValue(token, fallbackCatalog ?? primaryCatalog, cfg, activeGeneration);
+                if (subResult == null) continue;                        // passthrough
+                if (!string.IsNullOrEmpty(subResult)) parts.Add(subResult);
+            }
+            return string.Join(cfg.TokenOutputSeparator ?? ", ", parts);
+        }
+
+        /// <summary>
+        /// Looks up <paramref name="token"/> by exact case-insensitive match in the
+        /// <paramref name="lookupRole"/> column of <paramref name="catalog"/> and returns the
+        /// corresponding <paramref name="outputRole"/> value. Returns null when no entry matches
+        /// (no match), or the SEC string (possibly empty) when one does.
+        /// </summary>
+        private static string FindDirectMatchSec(
+            string token, CatalogData catalog, string lookupRole, string outputRole,
+            string activeGeneration = null)
+        {
+            if (catalog == null || string.IsNullOrEmpty(token)) return null;
+            string lKey = GetRoleKey(catalog, string.IsNullOrEmpty(lookupRole) ? "PRI" : lookupRole);
+            string oKey = GetRoleKey(catalog, string.IsNullOrEmpty(outputRole) ? "SEC" : outputRole);
+            if (lKey == null || oKey == null) return null;
+            foreach (var entry in catalog.Entries)
+            {
+                if (!EntryInGenerationScope(catalog, entry, activeGeneration)) continue;
+                if (entry.Values.TryGetValue(lKey, out string lv) &&
+                    string.Equals(lv, token, StringComparison.OrdinalIgnoreCase))
+                {
+                    entry.Values.TryGetValue(oKey, out string ov);
+                    return ov ?? "";    // matched (SEC may be empty for intentional empty-drop codes)
+                }
+            }
+            return null;    // no match
         }
 
         // ── PrefixSuffix card ─────────────────────────────────────────────────

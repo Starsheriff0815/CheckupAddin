@@ -137,6 +137,13 @@
     { "Values": { "group_id": "", "group_order": "", "group_label": "Plastics",          "short": "Nylon, Type 6/6",               "long": "Polyamide 66: strong, wear-resistant, good chemical resistance","note": "Inventor library" } },
     { "Values": { "group_id": "", "group_order": "", "group_label": "Plastics",          "short": "Polycarbonate",                 "long": "PC: transparent, high impact strength, dimensional stability","note": "Inventor library" } },
     { "Values": { "group_id": "", "group_order": "", "group_label": "Plastics",          "short": "Polyethylene, High Density (HDPE)", "long": "HDPE: chemical-resistant, low friction, food-safe",   "note": "Inventor library" } },
-    { "Values": { "group_id": "", "group_order": "", "group_label": "Plastics",          "short": "Polypropylene",                 "long": "PP: lightweight, chemical-resistant, good fatigue resistance","note": "Inventor library" } }
+    { "Values": { "group_id": "", "group_order": "", "group_label": "Plastics",          "short": "Polypropylene",                 "long": "PP: lightweight, chemical-resistant, good fatigue resistance","note": "Inventor library" } },
+
+    { "Values": { "group_id": "G_FINISH", "group_order": "14", "group_label": "Two-Sided Finish", "short": "", "long": "", "note": "" } },
+    { "Values": { "group_id": "", "group_order": "", "group_label": "Two-Sided Finish", "short": "rd",  "long": "Red",   "note": "Compose demo code" } },
+    { "Values": { "group_id": "", "group_order": "", "group_label": "Two-Sided Finish", "short": "bl",  "long": "Blue",  "note": "Compose demo code" } },
+    { "Values": { "group_id": "", "group_order": "", "group_label": "Two-Sided Finish", "short": "gn",  "long": "Green", "note": "Compose demo code" } },
+    { "Values": { "group_id": "", "group_order": "", "group_label": "Two-Sided Finish", "short": "wht", "long": "White", "note": "3-char code — proves longest-match" } },
+    { "Values": { "group_id": "", "group_order": "", "group_label": "Two-Sided Finish", "short": "xx",  "long": "",      "note": "empty output — dropped by Compose" } }
   ]
 }

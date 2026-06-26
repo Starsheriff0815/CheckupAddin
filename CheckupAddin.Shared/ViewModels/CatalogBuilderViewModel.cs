@@ -234,6 +234,7 @@ namespace CheckupAddIn.ViewModels
             new ColumnRoleItem(ColumnRole.GroupSortKey,     "GST  GroupSortKey",     "Sortierung der Gruppen innerhalb eines Tabs; mehrfach → GST1, GST2 …"),
             new ColumnRoleItem(ColumnRole.TabSortKey,       "TST  TabSortKey",       "Sortierung der Tabs in der Auswahlmaske; mehrfach → TST1, TST2 …"),
             new ColumnRoleItem(ColumnRole.Auxiliary,        "AUX  Auxiliary",        "Hilfsdaten: z. B. Tooltip-Text — wird nicht in Felder geschrieben."),
+            new ColumnRoleItem(ColumnRole.Generation,       "GEN  Generation",       "Generations-Marker (T43): die Lesart eines Werts hängt von der aktiven Generation ab; leere Zelle = universell (gilt für alle Generationen)."),
         };
 
         public ColumnRole SelectedColumnRole
@@ -419,6 +420,7 @@ namespace CheckupAddIn.ViewModels
         public RelayCommand AddPairTransformToActiveCommand   { get; }
         public RelayCommand AddPrefixSuffixToActiveCommand    { get; }
         public RelayCommand AddSortToActiveCommand             { get; }
+        public RelayCommand AddComposeToActiveCommand          { get; }
         // Basic Logic template commands — each adds a BL card pre-filled with a formula skeleton.
         public RelayCommand AddConcatenateToActiveCommand  { get; }
         public RelayCommand AddIfElseToActiveCommand       { get; }
@@ -742,6 +744,7 @@ namespace CheckupAddIn.ViewModels
             AddPairTransformToActiveCommand = new RelayCommand(() => _activeGroupVm?.AddCard(CardTypePairTransform), () => HasEditableActiveGroup);
             AddPrefixSuffixToActiveCommand  = new RelayCommand(() => _activeGroupVm?.AddCard(CardTypePrefixSuffix),  () => HasEditableActiveGroup);
             AddSortToActiveCommand          = new RelayCommand(() => _activeGroupVm?.AddCard(CardTypeSort),          () => HasEditableActiveGroup);
+            AddComposeToActiveCommand       = new RelayCommand(() => _activeGroupVm?.AddCard(CardTypeCompose),       () => HasEditableActiveGroup);
             // Basic Logic templates — each adds a BL card pre-filled with the function skeleton.
             AddConcatenateToActiveCommand  = new RelayCommand(() => _activeGroupVm?.AddBasicLogicCard("CONCATENATE(\"\", {INPUT})"),                    () => HasEditableActiveGroup);
             AddIfElseToActiveCommand       = new RelayCommand(() => _activeGroupVm?.AddBasicLogicCard("IF(EQ({INPUT}, \"\"), \"\", \"\")"),             () => HasEditableActiveGroup);
@@ -1662,6 +1665,7 @@ namespace CheckupAddIn.ViewModels
             CardTypePairTransform => "CardType_PairTransform",
             CardTypePrefixSuffix  => "CardType_PrefixSuffix",
             CardTypeSort          => "CardType_Sort",
+            CardTypeCompose       => "CardType_Compose",
             CardTypeBasicLogic    => "CardType_BasicLogic",
             string t              => t,
         });
@@ -1674,9 +1678,10 @@ namespace CheckupAddIn.ViewModels
         public bool   IsPairTransform        => Card.Type == CardTypePairTransform;
         public bool   IsPrefixSuffix         => Card.Type == CardTypePrefixSuffix;
         public bool   IsSort                 => Card.Type == CardTypeSort;
+        public bool   IsCompose              => Card.Type == CardTypeCompose;
         public bool   IsBasicLogic           => Card.Type == CardTypeBasicLogic;
         /// <summary>Cards that use a catalog (show catalog picker in config panel).</summary>
-        public bool   IsCatalogCard          => IsDropdownButtonSearch || IsSort;
+        public bool   IsCatalogCard          => IsDropdownButtonSearch || IsSort || IsCompose;
         /// <summary>Dropdown and Button cards expose SecRole/TooltipRole pickers (single-select context).</summary>
         public bool   IsDropdownOrButton     => Card.Type == CardTypeDropdown || Card.Type == CardTypeButton;
         /// <summary>Cards that have a catalog picker, sec/tooltip roles, and display columns.</summary>
@@ -1921,6 +1926,136 @@ namespace CheckupAddIn.ViewModels
             }
         }
 
+        // ── Compose card params (Task #41) ──────────────────────────────────
+        // LookupRole / OutputRole / CompanionFieldKey reuse the shared properties below.
+
+        /// <summary>Separator joining differing composed items (default " / ").</summary>
+        public string ComposeItemSeparator
+        {
+            get => Card.Params.TryGetValue(ParamComposeItemSeparator, out var v) ? v : " / ";
+            set { if (ComposeItemSeparator == (value ?? "")) return; Card.Params[ParamComposeItemSeparator] = value ?? ""; _onChanged?.Invoke(); OnPropertyChanged(); }
+        }
+
+        /// <summary>Comma-separated positional prefixes (spaces preserved), e.g. "Front ,Back ".</summary>
+        public string ComposeItemPrefixes
+        {
+            get => Card.Params.TryGetValue(ParamComposeItemPrefixes, out var v) ? v : "";
+            set { if (ComposeItemPrefixes == (value ?? "")) return; Card.Params[ParamComposeItemPrefixes] = value ?? ""; _onChanged?.Invoke(); OnPropertyChanged(); }
+        }
+
+        /// <summary>Prefix used when identical codes collapse into one item (default "").</summary>
+        public string ComposeCollapsedPrefix
+        {
+            get => Card.Params.TryGetValue(ParamComposeCollapsedPrefix, out var v) ? v : "";
+            set { if (ComposeCollapsedPrefix == (value ?? "")) return; Card.Params[ParamComposeCollapsedPrefix] = value ?? ""; _onChanged?.Invoke(); OnPropertyChanged(); }
+        }
+
+        /// <summary>When true, identical codes collapse into one item using CollapsedPrefix.</summary>
+        public bool ComposeCollapseWhenEqual
+        {
+            get => string.Equals(Card.Params.TryGetValue(ParamComposeCollapseWhenEqual, out var v) ? v : "false", "true", StringComparison.OrdinalIgnoreCase);
+            set { if (ComposeCollapseWhenEqual == value) return; Card.Params[ParamComposeCollapseWhenEqual] = value ? "true" : "false"; _onChanged?.Invoke(); OnPropertyChanged(); }
+        }
+
+        /// <summary>When true (default), codes whose output value is empty are dropped from the result.</summary>
+        public bool ComposeDropEmptyOutputs
+        {
+            get => !string.Equals(Card.Params.TryGetValue(ParamComposeDropEmptyOutputs, out var v) ? v : "true", "false", StringComparison.OrdinalIgnoreCase);
+            set { if (ComposeDropEmptyOutputs == value) return; Card.Params[ParamComposeDropEmptyOutputs] = value ? "true" : "false"; _onChanged?.Invoke(); OnPropertyChanged(); }
+        }
+
+        /// <summary>Maximum sub-codes to extract; empty = unlimited.</summary>
+        public string ComposeMaxItems
+        {
+            get => Card.Params.TryGetValue(ParamComposeMaxItems, out var v) ? v : "";
+            set
+            {
+                string val = (value ?? "").Trim();
+                if (ComposeMaxItems == val) return;
+                if (val.Length == 0) Card.Params.Remove(ParamComposeMaxItems);
+                else if (int.TryParse(val, out int n) && n >= 0) Card.Params[ParamComposeMaxItems] = n.ToString();
+                else return;   // ignore non-numeric input
+                _onChanged?.Invoke(); OnPropertyChanged();
+            }
+        }
+
+        /// <summary>Policy for input that doesn't fully tokenise: skip | keepRaw | passthrough.</summary>
+        public string ComposeOnUnknownToken
+        {
+            get => Card.Params.TryGetValue(ParamComposeOnUnknownToken, out var v) && !string.IsNullOrEmpty(v) ? v : "skip";
+            set { if (ComposeOnUnknownToken == (value ?? "skip")) return; Card.Params[ParamComposeOnUnknownToken] = string.IsNullOrEmpty(value) ? "skip" : value; _onChanged?.Invoke(); OnPropertyChanged(); }
+        }
+
+        /// <summary>Options for the OnUnknownToken combo.</summary>
+        public IReadOnlyList<string> ComposeUnknownModes { get; } = new[] { "skip", "keepRaw", "passthrough" };
+
+        // ── Compose card — Split Mode params (Task #42) ─────────────────────
+
+        /// <summary>Enables Split Mode: source field is split on this separator before sub-tokenization.</summary>
+        public string ComposeSourceSeparator
+        {
+            get => Card.Params.TryGetValue(ParamComposeSourceSeparator, out var v) ? v : "";
+            set
+            {
+                if (ComposeSourceSeparator == (value ?? "")) return;
+                Card.Params[ParamComposeSourceSeparator] = value ?? "";
+                _onChanged?.Invoke();
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(IsComposeSplitMode));  // drives Row 3 visibility
+            }
+        }
+
+        /// <summary>True when the card is in Split Mode (SourceSeparator is set). Drives Row 3 visibility.</summary>
+        public bool IsComposeSplitMode => !string.IsNullOrEmpty(ComposeSourceSeparator);
+
+        /// <summary>Separator used to join per-token outputs (default ", ").</summary>
+        public string ComposeTokenOutputSeparator
+        {
+            get => Card.Params.TryGetValue(ParamComposeTokenOutputSeparator, out var v) ? v : ", ";
+            set { if (ComposeTokenOutputSeparator == (value ?? ", ")) return; Card.Params[ParamComposeTokenOutputSeparator] = value ?? ", "; _onChanged?.Invoke(); OnPropertyChanged(); }
+        }
+
+        /// <summary>Catalog ID used for sub-tokenization (overrides the card's primary catalog). Empty = use primary catalog.</summary>
+        public string ComposeFallbackCatalogId
+        {
+            get => Card.Params.TryGetValue(ParamComposeFallbackCatalogId, out var v) ? v ?? "" : "";
+            set { if (ComposeFallbackCatalogId == (value ?? "")) return; Card.Params[ParamComposeFallbackCatalogId] = value ?? ""; _onChanged?.Invoke(); OnPropertyChanged(); }
+        }
+
+        /// <summary>Whether direct-match tokens are included in or skipped from the output (default "include").</summary>
+        public string ComposeOnDirectMatch
+        {
+            get => Card.Params.TryGetValue(ParamComposeOnDirectMatch, out var v) && !string.IsNullOrEmpty(v) ? v : "include";
+            set { if (ComposeOnDirectMatch == (value ?? "include")) return; Card.Params[ParamComposeOnDirectMatch] = string.IsNullOrEmpty(value) ? "include" : value; _onChanged?.Invoke(); OnPropertyChanged(); }
+        }
+
+        /// <summary>Options for the OnDirectMatch combo.</summary>
+        public IReadOnlyList<string> ComposeDirectMatchModes { get; } = new[] { "include", "skip" };
+
+        /// <summary>Whether this card replaces or appends to the companion field (default "replace").</summary>
+        public string ComposeOutputMode
+        {
+            get => Card.Params.TryGetValue(ParamComposeOutputMode, out var v) && !string.IsNullOrEmpty(v) ? v : "replace";
+            set { if (ComposeOutputMode == (value ?? "replace")) return; Card.Params[ParamComposeOutputMode] = string.IsNullOrEmpty(value) ? "replace" : value; _onChanged?.Invoke(); OnPropertyChanged(); }
+        }
+
+        /// <summary>Options for the OutputMode combo.</summary>
+        public IReadOnlyList<string> ComposeOutputModes { get; } = new[] { "replace", "append" };
+
+        /// <summary>Separator prepended between the existing companion value and the new result in append mode (default ", ").</summary>
+        public string ComposeAppendSeparator
+        {
+            get => Card.Params.TryGetValue(ParamComposeAppendSeparator, out var v) ? v : ", ";
+            set { if (ComposeAppendSeparator == (value ?? ", ")) return; Card.Params[ParamComposeAppendSeparator] = value ?? ", "; _onChanged?.Invoke(); OnPropertyChanged(); }
+        }
+
+        /// <summary>T43 — this card's segment rank in the sorted assembly (placing_order). Default "0".</summary>
+        public string ComposeOutputPlacing
+        {
+            get => Card.Params.TryGetValue(ParamComposeOutputPlacing, out var v) ? v : "0";
+            set { if (ComposeOutputPlacing == (value ?? "0")) return; Card.Params[ParamComposeOutputPlacing] = value ?? "0"; _onChanged?.Invoke(); OnPropertyChanged(); }
+        }
+
         // ── Basic Logic card params ─────────────────────────────────────────
 
         /// <summary>BL formula expression (see <see cref="FormulaEngine"/> syntax).</summary>
@@ -2009,8 +2144,8 @@ namespace CheckupAddIn.ViewModels
         private bool         _isCardFieldPickerOpen;
         private List<string> _cardFieldPickerPinnedKeys = new();
 
-        /// <summary>True for card types that have a companion/partner field picker (Link, Sync, MultiPick, PairTransform).</summary>
-        public bool HasCardFieldPicker => IsLink || IsSync || IsMultiPick || IsPairTransform;
+        /// <summary>True for card types that have a companion/partner field picker (Link, Sync, MultiPick, PairTransform, Compose).</summary>
+        public bool HasCardFieldPicker => IsLink || IsSync || IsMultiPick || IsPairTransform || IsCompose;
 
         /// <summary>Unified field key: PartnerFieldKey for Link cards, CompanionFieldKey for all other field-picker card types.</summary>
         public string CardFieldPickerKey
@@ -2262,6 +2397,7 @@ namespace CheckupAddIn.ViewModels
         public RelayCommand RemoveGroupCommand      { get; }
         public RelayCommand ToggleCollapseCommand   { get; }
         public RelayCommand ToggleExpertCommand     { get; }
+        public RelayCommand ToggleSortCommand       { get; }
         public RelayCommand MoveGroupUpCommand      { get; }
         public RelayCommand MoveGroupDownCommand    { get; }
         public RelayCommand DuplicateGroupCommand   { get; }
@@ -2425,6 +2561,7 @@ namespace CheckupAddIn.ViewModels
             RemoveGroupCommand     = new RelayCommand(() => _onRemove?.Invoke(this));
             ToggleCollapseCommand  = new RelayCommand(() => IsCollapsed = !IsCollapsed);
             ToggleExpertCommand    = new RelayCommand(() => IsExpert = !IsExpert);
+            ToggleSortCommand      = new RelayCommand(() => OrderByPlacing = !OrderByPlacing);
             MoveGroupUpCommand     = new RelayCommand(MoveGroupUp,    CanMoveGroupUp);
             MoveGroupDownCommand   = new RelayCommand(MoveGroupDown,  CanMoveGroupDown);
             DuplicateGroupCommand  = new RelayCommand(() => _duplicateGroup?.Invoke(this));
@@ -2673,6 +2810,19 @@ namespace CheckupAddIn.ViewModels
             }
         }
 
+        /// <summary>T43 — the group ⇅ sort toggle (D-sort-1). Mirrors IsExpert: persists to the model + saves.</summary>
+        public bool OrderByPlacing
+        {
+            get => Group.OrderCompanionByPlacing;
+            set
+            {
+                if (Group.OrderCompanionByPlacing == value) return;
+                Group.OrderCompanionByPlacing = value;
+                _onSave?.Invoke();
+                OnPropertyChanged();
+            }
+        }
+
         private void PropagateIsExpertToCards()
         {
             foreach (var c in Cards) c.IsExpertModeGroup = Group.IsExpert;
@@ -2767,7 +2917,7 @@ namespace CheckupAddIn.ViewModels
                 {
                     CardTypeDropdown, CardTypeButton, CardTypeSearch, CardTypeMultiPick,
                     CardTypeLink, CardTypeSync, CardTypePairTransform,
-                    CardTypePrefixSuffix, CardTypeSort, CardTypeBasicLogic,
+                    CardTypePrefixSuffix, CardTypeSort, CardTypeCompose, CardTypeBasicLogic,
                 };
                 var result = new List<CardTypePill>(counts.Count);
                 foreach (var t in order)
@@ -2994,6 +3144,7 @@ namespace CheckupAddIn.ViewModels
             CheckupAddIn.Services.CardEngine.CardTypePairTransform => "CardType_PairTransform",
             CheckupAddIn.Services.CardEngine.CardTypePrefixSuffix  => "CardType_PrefixSuffix",
             CheckupAddIn.Services.CardEngine.CardTypeSort          => "CardType_Sort",
+            CheckupAddIn.Services.CardEngine.CardTypeCompose       => "CardType_Compose",
             CheckupAddIn.Services.CardEngine.CardTypeBasicLogic    => "CardType_BasicLogic",
             _                                                       => CardType,
         });
