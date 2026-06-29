@@ -1068,7 +1068,7 @@ namespace CheckupAddIn.Services
         public static IEnumerable<(string FieldKey, string Value, bool IsAppend, string AppendSeparator)>
             GetComposeWritesEx(
                 CardGroup group, CatalogData primaryCatalog, string sourceValue,
-                Func<string, CatalogData> getCatalogById = null)
+                Func<string, CatalogData> getCatalogById = null, string activeGeneration = null)
         {
             if (group == null || primaryCatalog == null) yield break;
             foreach (var card in group.Cards)
@@ -1083,11 +1083,11 @@ namespace CheckupAddIn.Services
                     CatalogData fallback = (!string.IsNullOrEmpty(cfg.FallbackCatalogId) && getCatalogById != null)
                         ? getCatalogById(cfg.FallbackCatalogId) ?? primaryCatalog
                         : primaryCatalog;
-                    result = BuildComposeSplitValue(sourceValue, primaryCatalog, fallback, cfg);
+                    result = BuildComposeSplitValue(sourceValue, primaryCatalog, fallback, cfg, activeGeneration);
                 }
                 else
                 {
-                    result = BuildComposeValue(sourceValue, primaryCatalog, cfg);
+                    result = BuildComposeValue(sourceValue, primaryCatalog, cfg, activeGeneration);
                 }
 
                 if (result == null) continue;   // passthrough — leave companion untouched
@@ -1132,6 +1132,23 @@ namespace CheckupAddIn.Services
                 yield return (cfg.CompanionFieldKey,
                     new OrderedSegment(cfg.OutputPlacing, cfg.OutputInternal, 100000 + order, result));
                 order++;
+            }
+        }
+
+        /// <summary>
+        /// Returns the companion field keys of all enabled Compose cards in <paramref name="group"/>
+        /// that have a non-empty companion key. Used by the sorted-assembly path to detect companion
+        /// fields that produced no segments and must be explicitly cleared.
+        /// </summary>
+        public static IEnumerable<string> GetComposeCompanionKeys(CardGroup group)
+        {
+            if (group == null) yield break;
+            foreach (var card in group.Cards)
+            {
+                if (!card.Enabled || card.Type != CardTypeCompose) continue;
+                var cfg = ReadComposeCard(card);
+                if (!string.IsNullOrEmpty(cfg.CompanionFieldKey))
+                    yield return cfg.CompanionFieldKey;
             }
         }
 

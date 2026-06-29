@@ -2234,7 +2234,7 @@ namespace CheckupAddIn.ViewModels
 
                         // T43 — sorted-companion assembly path (group ⇅ toggle): detect the generation from the
                         // typed short, collect tagged segments from PairTransform + each Compose card, sort by
-                        // placing_order, write each companion field ONCE. Legacy append path runs when toggle off.
+                        // placing_order, write each companion field ONCE. Sequential append path runs when toggle off.
                         if (logicGroup.OrderCompanionByPlacing)
                         {
                             var (tSrcSep, tLookup, tOutput, tOutSep, tCompField) = CardEngine.GetPairTransformConfig(logicGroup);
@@ -2263,6 +2263,13 @@ namespace CheckupAddIn.ViewModels
                                     _fieldWriter.WriteFieldValue(doc, kv.Key, assembled);
                             }
 
+                            // C3: clear companion fields whose Compose cards produced no segments so
+                            // stale values from a prior Apply do not persist.
+                            foreach (string cfKey in CardEngine.GetComposeCompanionKeys(logicGroup))
+                                if (!segsByField.ContainsKey(cfKey))
+                                    foreach (var doc in _selectedDocs)
+                                        _fieldWriter.WriteFieldValue(doc, cfKey, "");
+
                             // T43 — also canonicalize the SHORT (writeFieldKey) so SPEZIFIK1 matches the sorted long.
                             string sortedShort = CardEngine.BuildSortedShort(
                                 logicGroup, logicCatalog, newValue, tSrcSep, tLookup, activeGen,
@@ -2274,6 +2281,15 @@ namespace CheckupAddIn.ViewModels
                         else
                         {
 
+                        // C1/C2: detect generation for the sequential (sort-off) path so PairTransform
+                        // and Compose both see the correct generation scope.
+                        var (elsSrcSep, _, _, _, _) = CardEngine.GetPairTransformConfig(logicGroup);
+                        string elsActiveGen = string.IsNullOrEmpty(logicGroup.GenerationSignalValues)
+                            ? ""
+                            : CardEngine.DetectGeneration(newValue, logicCatalog, elsSrcSep,
+                                logicGroup.GenerationSignalColumn, logicGroup.GenerationSignalValues,
+                                logicGroup.GenerationWhenPresent, logicGroup.GenerationWhenAbsent);
+
                         if (CardEngine.HasPairTransformCard(logicGroup))
                         {
                             var (srcSep, lookupRole, outputRole, outSep, compField) =
@@ -2283,7 +2299,7 @@ namespace CheckupAddIn.ViewModels
                             if (!string.IsNullOrEmpty(compField))
                             {
                                 string transformed = CardEngine.BuildPairTransformValue(
-                                    newValue, logicCatalog, srcSep, lookupRole, outputRole, outSep);
+                                    newValue, logicCatalog, srcSep, lookupRole, outputRole, outSep, elsActiveGen);
                                 DiagLogger.Log("pairtransform", $"transformed='{DiagLogger.S(transformed)}' → writing to '{compField}'");
                                 foreach (var doc in _selectedDocs)
                                     _fieldWriter.WriteFieldValue(doc, compField, transformed);
@@ -2295,7 +2311,7 @@ namespace CheckupAddIn.ViewModels
                         // (null result) and empty-append results are skipped inside GetComposeWritesEx.
                         foreach (var (composeKey, composeVal, isAppend, appendSep) in
                             CardEngine.GetComposeWritesEx(logicGroup, logicCatalog, newValue,
-                                id => _catalogStore?.Catalogs.FirstOrDefault(c => c.Id == id)))
+                                id => _catalogStore?.Catalogs.FirstOrDefault(c => c.Id == id), elsActiveGen))
                         {
                             foreach (var doc in _selectedDocs)
                             {
@@ -2309,7 +2325,7 @@ namespace CheckupAddIn.ViewModels
                                 _fieldWriter.WriteFieldValue(doc, composeKey, finalVal);
                             }
                         }
-                        } // end else — legacy append path (T43 sorted path above)
+                        } // end else — sequential append path (sort-off; T43 sorted path above)
                     }
                     else if (logicGroup != null)
                     {

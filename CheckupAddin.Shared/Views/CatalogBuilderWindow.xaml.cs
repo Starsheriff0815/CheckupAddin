@@ -99,6 +99,7 @@ namespace CheckupAddIn.Views
             ColumnRole.GroupSortKey     => "GST",
             ColumnRole.TabSortKey       => "TST",
             ColumnRole.Auxiliary        => "AUX",
+            ColumnRole.Generation       => "GEN",
             _                           => "",
         };
 
@@ -126,6 +127,7 @@ namespace CheckupAddIn.Views
             [ColumnRole.GroupSortKey]     = new SolidColorBrush(Color.FromRgb(0xFF, 0xC1, 0x07)), // Amber    — group sort
             [ColumnRole.TabSortKey]       = new SolidColorBrush(Color.FromRgb(0x8B, 0xC3, 0x4A)), // Lime     — tab sort
             [ColumnRole.Auxiliary]        = new SolidColorBrush(Color.FromRgb(0x60, 0x7D, 0x8B)), // Blue-gray
+            [ColumnRole.Generation]       = new SolidColorBrush(Color.FromRgb(0x4C, 0xAF, 0x50)), // Green
         };
 
         public override string ToString() => Label ?? "";
