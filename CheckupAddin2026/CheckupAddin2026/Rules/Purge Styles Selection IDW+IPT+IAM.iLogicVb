@@ -1,61 +1,48 @@
-﻿' Bereinigen IDW+IPT+IAM
-' Stand: 2026-05-08
+﻿' Purge Styles Selection IDW+IPT+IAM
+' Created: 2026-09-29 (selection-aware copy of "Bereinigen IDW+IPT+IAM")
 '
-' Bereinigt Stile in IDW-, IPT- (inkl. Blech) und IAM-Dokumenten.
-' Bei IDW wird zusätzlich:
-'   - Rahmen, Schriftfeld und Skizzensymbole aus der Vorlagedatei kopiert
-'   - Veraltete Skizzensymbol-Definitionen und ihre Instanzen gelöscht
-'   - Maßtext-Ausrichtung auf "zentriert" gesetzt
+' Purges styles like "Bereinigen IDW+IPT+IAM", but works on the SELECTION when an assembly is open:
+'   - Assembly open WITH a selection: every selected object is purged.
+'       * a selected part (at any depth)        -> that part
+'       * a selected sub-assembly               -> the sub-assembly PLUS all levels below it
+'                                                  (nested sub-assemblies and their parts)
+'     Each document is purged once (even if it occurs many times), lowest level first.
+'     Read-only, library and Content Center documents are skipped and counted.
+'     A summary is shown at the end.
+'   - Assembly open WITHOUT a selection, or a part / drawing open: exactly the original
+'     behaviour — only the active document is purged.
+' The rule never saves: purged documents stay modified until you save them.
 '
-' Entspricht der "Stile Bereinigen"-Funktion des CheckupAddin2027 (StylePurger.cs).
-' Bei Änderungen an StylePurger.cs muss dieses Skript synchron gehalten werden.
+' Shipped with the Checkup add-in as a template rule in its Rules folder — copy it into your own
+' iLogic rule folder and adapt the CONFIGURATION block below to your paths and style names.
+' The purge functions below are a copy of "Bereinigen IDW+IPT+IAM" (iLogic rules cannot share
+' code); a change to the purge logic must be made in both files.
 '
-' Bekannte Einschränkung: "Standard"- und "Objektstandards"-Stile sind über die
-' öffentliche COM-API auf IPT/IAM nicht zugänglich und werden daher nicht aktualisiert.
-' Inventor selbst greift dafür auf internen C++-Code zu, der nicht für Skripte freigegeben ist.
+' Known limitation: "Standard" and "Object Defaults" styles are not accessible through the
+' public COM API on IPT/IAM and are therefore not updated. Inventor itself uses internal C++
+' code for that, which is not exposed to scripts.
 
 Sub Main()
     ' ═══════════════════════════════════════════════════════════════════════
-    '  KONFIGURATION — hier bei Bedarf anpassen
+    '  CONFIGURATION — adapt here as needed
     ' ═══════════════════════════════════════════════════════════════════════
 
-    Dim templateFilePath As String = "V:\CAD\INV\Templates\Standard.idw"
+    ' Drawing template (IDW) to copy borders, title blocks and sketched symbols from.
+    ' Empty = nothing is copied. Example: "C:\CAD\Templates\Standard.idw"
+    Dim templateFilePath As String = ""
 
-    Dim borderDefinitions As String() = New String() {
-        "A4 IZ-Rahmen",
-        "A3 IZ-Rahmen",
-        "A2 IZ-Rahmen",
-        "A1 IZ-Rahmen",
-        "A0 IZ-Rahmen"
-    }
+    ' Border definitions to copy from the template. Example: {"A4 Border", "A3 Border"}
+    Dim borderDefinitions As String() = New String() {}
 
-    Dim titleBlockDefinitions As String() = New String() {
-        "IZ_Teil",
-        "IZ_Auftrag",
-        "IZ_Auftrag Englisch"
-    }
+    ' Title block definitions to copy from the template. Example: {"Title Block Part", "Title Block Assembly"}
+    Dim titleBlockDefinitions As String() = New String() {}
 
-    Dim sketchedSymbolsToCopy As String() = New String() {
-        "Blechstil",
-        "Schliffrichtung"
-    }
+    ' Sketched symbols to copy from the template. Example: {"Grain Direction", "Surface Finish"}
+    Dim sketchedSymbolsToCopy As String() = New String() {}
 
-    Dim sketchedSymbolsToDelete As String() = New String() {
-        "Abwicklung V170",
-        "Abwicklung BVA",
-        "Kopie von Schliffrichtung",
-        "Kopie von Blechstil",
-        "Sichtseite",
-        "Sichtseite 2",
-        "Schweißzeichnung",
-        "Abwicklung-Skizz. Symbole",
-        "Eckbereich komplett verschweißen",
-        "Aussehen der Schweißnaht...",
-        "Feder re",
-        "Feder li",
-        "Bohrungen abkleben",
-        "einkleben mit...."
-    }
+    ' Obsolete sketched symbols to delete (definitions and all their instances).
+    ' Example: {"Old Symbol", "Copy of Old Symbol"}
+    Dim sketchedSymbolsToDelete As String() = New String() {}
 
     ' ═══════════════════════════════════════════════════════════════════════
 
@@ -64,10 +51,26 @@ Sub Main()
 
     Dim doc As Document = ThisApplication.ActiveDocument
     If doc Is Nothing Then
-        MsgBox("Kein aktives Dokument.", vbOKOnly + vbExclamation, "Bereinigen")
+        MsgBox("No active document.", vbOKOnly + vbExclamation, "Purge Styles")
         Exit Sub
     End If
 
+    ' Assembly with a selection → purge the selected objects (all levels below each selection).
+    If doc.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+        Dim asmDoc As AssemblyDocument = doc
+        If asmDoc.SelectSet.Count > 0 Then
+            Dim summary As String = PurgeSelection(asmDoc)
+            stopWatch.Stop()
+            Dim tsSel As TimeSpan = stopWatch.Elapsed
+            Dim elapsedSel As String = FormatRuntime(tsSel)
+            Logger.Info("Purge finished – " & summary.Replace(vbCrLf, " | ") & " – runtime " & elapsedSel, filename)
+            MsgBox(summary, vbOKOnly + vbInformation, "Purge Styles")
+            iLogicVb.UpdateWhenDone = True
+            Exit Sub
+        End If
+    End If
+
+    ' No selection (or part / drawing open) → original behaviour: purge the active document only.
     Dim result As String
     Select Case doc.DocumentType
         Case DocumentTypeEnum.kDrawingDocumentObject
@@ -77,18 +80,152 @@ Sub Main()
             Dim partDoc As PartDocument = doc
             result = PurgePart(partDoc)
         Case DocumentTypeEnum.kAssemblyDocumentObject
-            Dim asmDoc As AssemblyDocument = doc
-            result = PurgeAssembly(asmDoc)
+            Dim asmDoc2 As AssemblyDocument = doc
+            result = PurgeAssembly(asmDoc2)
         Case Else
-            result = "Dokumententyp wird nicht unterstützt."
+            result = "Document type is not supported."
     End Select
 
     stopWatch.Stop()
     Dim ts As TimeSpan = stopWatch.Elapsed
-    Dim elapsedTime As String = String.Format("{0:00}:{1:00}", ts.Seconds, ts.Milliseconds / 10)
-    Logger.Info("Bereinigen fertig – " & result & " – Laufzeit " & elapsedTime & " (Sekunden:Millisekunden)", filename)
+    Dim elapsedTime As String = FormatRuntime(ts)
+    Logger.Info("Purge finished – " & result & " – runtime " & elapsedTime, filename)
     iLogicVb.UpdateWhenDone = True
 End Sub
+
+
+' ═══════════════════════════════════════════════════════════════════════════
+'  SELECTION (assembly open, one or more objects selected)
+' ═══════════════════════════════════════════════════════════════════════════
+
+' Collects the documents of all selected components — a selected sub-assembly brings all levels
+' below it — then purges each document once, lowest level first. Returns the summary text.
+Function PurgeSelection(asmDoc As AssemblyDocument) As String
+    Dim visited As New Dictionary(Of String, Boolean)(StringComparer.OrdinalIgnoreCase)
+    Dim ordered As New List(Of Document)
+
+    ' Snapshot the selection first: purging must not run while the SelectSet is being enumerated.
+    Dim selectedDocs As New List(Of Document)
+    For Each obj As Object In asmDoc.SelectSet
+        If TypeOf obj Is ComponentOccurrence Then
+            Dim occ As ComponentOccurrence = obj
+            Try
+                Dim occDoc As Document = occ.Definition.Document
+                If occDoc IsNot Nothing Then selectedDocs.Add(occDoc)
+            Catch
+                ' Suppressed or virtual component — nothing to purge.
+            End Try
+        End If
+    Next
+
+    For Each selDoc As Document In selectedDocs
+        CollectPostOrder(selDoc, visited, ordered)
+    Next
+
+    Dim cleanedIpt As Integer = 0
+    Dim cleanedIam As Integer = 0
+    Dim skippedReadOnly As Integer = 0
+    Dim skippedContentCenter As Integer = 0
+    Dim skippedOther As Integer = 0
+    Dim failed As New List(Of String)
+
+    For Each d As Document In ordered
+        Dim reason As String = SkipReason(d)
+        If reason = "readonly" Then
+            skippedReadOnly += 1
+            Continue For
+        ElseIf reason = "contentcenter" Then
+            skippedContentCenter += 1
+            Continue For
+        ElseIf reason = "other" Then
+            skippedOther += 1
+            Continue For
+        End If
+
+        Try
+            If d.DocumentType = DocumentTypeEnum.kPartDocumentObject Then
+                Dim p As PartDocument = d
+                PurgePart(p)
+                cleanedIpt += 1
+            ElseIf d.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+                Dim a As AssemblyDocument = d
+                PurgeAssembly(a)
+                cleanedIam += 1
+            End If
+        Catch ex As Exception
+            failed.Add(d.DisplayName & ": " & ex.Message)
+        End Try
+    Next
+
+    Dim sb As New System.Text.StringBuilder()
+    sb.Append((cleanedIpt + cleanedIam).ToString() & " file(s) purged (" & cleanedIpt.ToString() & " IPT, " & cleanedIam.ToString() & " IAM)")
+    Dim skippedTotal As Integer = skippedReadOnly + skippedContentCenter + skippedOther
+    If skippedTotal > 0 Then
+        sb.Append(vbCrLf & skippedTotal.ToString() & " skipped (" & skippedReadOnly.ToString() & " read-only / library, " & skippedContentCenter.ToString() & " Content Center, " & skippedOther.ToString() & " other type)")
+    End If
+    If failed.Count > 0 Then
+        sb.Append(vbCrLf & failed.Count.ToString() & " failed:")
+        For Each f As String In failed
+            sb.Append(vbCrLf & "  " & f)
+        Next
+    End If
+    sb.Append(vbCrLf & "Nothing was saved.")
+    Return sb.ToString()
+End Function
+
+
+' Depth-first walk that adds a document AFTER all documents it references (post-order), so the
+' list runs from the lowest level up. Each file is added once (keyed by its full file name).
+Sub CollectPostOrder(d As Document, visited As Dictionary(Of String, Boolean), ordered As List(Of Document))
+    Dim key As String = ""
+    Try
+        key = d.FullFileName
+    Catch
+    End Try
+    If String.IsNullOrEmpty(key) Then key = d.DisplayName
+    If visited.ContainsKey(key) Then Exit Sub
+    visited(key) = True
+
+    If d.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+        For Each refDoc As Document In d.ReferencedDocuments
+            CollectPostOrder(refDoc, visited, ordered)
+        Next
+    End If
+
+    ordered.Add(d)
+End Sub
+
+
+' Returns "" when the document may be purged, otherwise the skip reason:
+' "readonly" (not modifiable: read-only file or library), "contentcenter", "other" (not IPT/IAM).
+Function SkipReason(d As Document) As String
+    If d.DocumentType <> DocumentTypeEnum.kPartDocumentObject AndAlso d.DocumentType <> DocumentTypeEnum.kAssemblyDocumentObject Then
+        Return "other"
+    End If
+
+    If d.DocumentType = DocumentTypeEnum.kPartDocumentObject Then
+        Try
+            Dim p As PartDocument = d
+            If p.ComponentDefinition.IsContentMember Then Return "contentcenter"
+        Catch
+        End Try
+    End If
+
+    Try
+        If Not d.IsModifiable Then Return "readonly"
+    Catch
+    End Try
+
+    Try
+        Dim path As String = d.FullFileName
+        If Not String.IsNullOrEmpty(path) AndAlso System.IO.File.Exists(path) Then
+            If (System.IO.File.GetAttributes(path) And System.IO.FileAttributes.ReadOnly) = System.IO.FileAttributes.ReadOnly Then Return "readonly"
+        End If
+    Catch
+    End Try
+
+    Return ""
+End Function
 
 
 ' ═══════════════════════════════════════════════════════════════════════════
@@ -98,7 +235,7 @@ End Sub
 Function PurgeDrawing(doc As DrawingDocument, templateFilePath As String, borderDefinitions As String(), titleBlockDefinitions As String(), sketchedSymbolsToCopy As String(), sketchedSymbolsToDelete As String()) As String
     Dim warnings As New List(Of String)
 
-    ' 1. Erste Runde: alle nicht-Bibliotheks-Stile aktualisieren
+    ' 1. First pass: update all non-library styles
     Dim styleSnapshot As New List(Of Style)
     For Each st As Style In doc.StylesManager.Styles
         styleSnapshot.Add(st)
@@ -113,16 +250,16 @@ Function PurgeDrawing(doc As DrawingDocument, templateFilePath As String, border
         End If
     Next
 
-    ' 2. Rahmen / Schriftfelder / Skizzensymbole aus Vorlagedatei kopieren
+    ' 2. Copy borders / title blocks / sketched symbols from the template file
     If Not String.IsNullOrWhiteSpace(templateFilePath) Then
         Try
             CopyFromTemplate(doc, warnings, templateFilePath, borderDefinitions, titleBlockDefinitions, sketchedSymbolsToCopy)
         Catch ex As Exception
-            warnings.Add("Vorlage-Import abgebrochen: " & ex.Message)
+            warnings.Add("Template import aborted: " & ex.Message)
         End Try
     End If
 
-    ' 3. Veraltete Skizzensymbol-Instanzen und -Definitionen löschen
+    ' 3. Delete obsolete sketched symbol instances and definitions
     For Each symbolName As String In sketchedSymbolsToDelete
         Dim symDef As SketchedSymbolDefinition = Nothing
         Try
@@ -150,13 +287,13 @@ Function PurgeDrawing(doc As DrawingDocument, templateFilePath As String, border
         End Try
     Next
 
-    ' 4. Maßtext-Ausrichtung auf "zentriert beibehalten" setzen
+    ' 4. Set dimension text alignment to "maintain centered"
     Try
         doc.DrawingSettings.DimensionTextAlignment = DimensionTextAlignmentEnum.kMaintainCenteredTextAlignment
     Catch
     End Try
 
-    ' 5. Schleife: nicht aktuelle Stile aktualisieren + unbenutzte löschen, bis stabil
+    ' 5. Loop: update out-of-date styles + delete unused ones until stable
     Dim changed As Boolean
     Dim loopPass As Integer = 0
     Do
@@ -191,7 +328,7 @@ Function PurgeDrawing(doc As DrawingDocument, templateFilePath As String, border
         End Try
     End If
 
-    Dim sb As New System.Text.StringBuilder("IDW Stile bereinigt – " & DateTime.Now.ToString("HH:mm:ss"))
+    Dim sb As New System.Text.StringBuilder("IDW styles purged – " & DateTime.Now.ToString("HH:mm:ss"))
     For Each w As String In warnings
         sb.Append("  ⚠ " & w)
     Next
@@ -201,7 +338,7 @@ End Function
 
 Sub CopyFromTemplate(target As DrawingDocument, warnings As List(Of String), templateFilePath As String, borderDefinitions As String(), titleBlockDefinitions As String(), sketchedSymbolsToCopy As String())
     If Not System.IO.File.Exists(templateFilePath) Then
-        warnings.Add("Vorlagedatei nicht gefunden: " & templateFilePath)
+        warnings.Add("Template file not found: " & templateFilePath)
         Exit Sub
     End If
 
@@ -213,7 +350,7 @@ Sub CopyFromTemplate(target As DrawingDocument, warnings As List(Of String), tem
             Try
                 source.BorderDefinitions.Item(name).CopyTo(target, True)
             Catch
-                warnings.Add("Rahmen nicht in Vorlage oder kopieren fehlgeschlagen: " & name)
+                warnings.Add("Border not in template or copy failed: " & name)
             End Try
         Next
 
@@ -221,7 +358,7 @@ Sub CopyFromTemplate(target As DrawingDocument, warnings As List(Of String), tem
             Try
                 source.TitleBlockDefinitions.Item(name).CopyTo(target, True)
             Catch
-                warnings.Add("Schriftfeld nicht in Vorlage oder kopieren fehlgeschlagen: " & name)
+                warnings.Add("Title block not in template or copy failed: " & name)
             End Try
         Next
 
@@ -229,7 +366,7 @@ Sub CopyFromTemplate(target As DrawingDocument, warnings As List(Of String), tem
             Try
                 source.SketchedSymbolDefinitions.Item(name).CopyTo(target, True)
             Catch
-                warnings.Add("Skizzensymbol nicht in Vorlage oder kopieren fehlgeschlagen: " & name)
+                warnings.Add("Sketched symbol not in template or copy failed: " & name)
             End Try
         Next
     Finally
@@ -242,7 +379,7 @@ End Sub
 
 
 ' ═══════════════════════════════════════════════════════════════════════════
-'  IPT (regulär und Blech)
+'  IPT (standard and sheet metal)
 ' ═══════════════════════════════════════════════════════════════════════════
 
 Function PurgePart(doc As PartDocument) As String
@@ -289,8 +426,8 @@ Function PurgePart(doc As PartDocument) As String
     Next
 
     Dim suffix As String = ""
-    If isSM Then suffix = " (Blech)"
-    Return "IPT Stile bereinigt" & suffix & " – " & DateTime.Now.ToString("HH:mm:ss")
+    If isSM Then suffix = " (sheet metal)"
+    Return "IPT styles purged" & suffix & " – " & DateTime.Now.ToString("HH:mm:ss")
 End Function
 
 
@@ -327,12 +464,12 @@ Function PurgeAssembly(doc As AssemblyDocument) As String
         If Not anyChange Then Exit For
     Next
 
-    Return "IAM Stile bereinigt – " & DateTime.Now.ToString("HH:mm:ss")
+    Return "IAM styles purged – " & DateTime.Now.ToString("HH:mm:ss")
 End Function
 
 
 ' ═══════════════════════════════════════════════════════════════════════════
-'  Hilfsfunktionen
+'  Helper functions
 ' ═══════════════════════════════════════════════════════════════════════════
 
 ' Inventor holds a lock on the active sheet metal style and silently ignores
@@ -674,4 +811,12 @@ Function PurgeAssets(collection As Object) As Boolean
     Catch
     End Try
     Return anyDeleted
+End Function
+
+' Runtime text: seconds below one minute ("4.2 s"), minutes and seconds from one minute on ("2 min 05 s").
+Function FormatRuntime(ts As TimeSpan) As String
+    If ts.TotalSeconds < 60 Then
+        Return ts.TotalSeconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) & " s"
+    End If
+    Return CInt(Math.Floor(ts.TotalMinutes)).ToString() & " min " & ts.Seconds.ToString("00") & " s"
 End Function

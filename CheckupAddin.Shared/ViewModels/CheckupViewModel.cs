@@ -43,7 +43,7 @@ namespace CheckupAddIn.ViewModels
         internal Inventor.Application AppInstance => _app;
         private readonly DocumentResolver     _docResolver;
         private readonly FieldCatalogBuilder  _catalogBuilder;
-        private readonly StylePurger          _stylePurger;
+        private readonly ILogicRuleService    _ruleService;
         private readonly PresetsManager       _presetsManager;
         private readonly FieldWriter          _fieldWriter;
         private readonly CatalogStore         _catalogStore;
@@ -96,19 +96,14 @@ namespace CheckupAddIn.ViewModels
         private Dictionary<string, Dictionary<string, int>> _subAsmGroups = new(StringComparer.OrdinalIgnoreCase);
         // 0=Plain, 1=Compact, 2=Detailed — persisted via UiStateStore.
         private int                      _fileNameViewMode = 0;
-        private int                      _activePresetIndex = -1;
+        private string                   _activePresetId = "";
         private const int MAX_ROWS = 30;
         // Tracks which multi-token Logic row is currently in edit mode (for per-token autocomplete).
         private RowModel _activeMultiTokenEditRow;
 
         // ── Demo mode warning ──
-        private const string DemoPresetName = "Demo";
-        private static readonly string[] _demoDefaultFieldKeys =
-        {
-            "IPROP|Description", "IPROP|Part Number", "DOC:Material", "DOC:Appearance",
-            "IPROP|Revision Number", "SPECIAL:LOGIC:demo-g03",
-            "SPECIAL:LOGIC:demo-g01", "SPECIAL:LOGIC:demo-g08"
-        };
+        private const string DemoPresetName = PresetsManager.DemoPresetName;
+        private static readonly string[] _demoDefaultFieldKeys = PresetsManager.DemoDefaultFieldKeys;
         // Static: persists across window close/reopen within the same Inventor session (AppDomain lifetime).
         private static int  _demoWindowOpenCount  = 0;
         private static bool _demoShownThisSession = false;
@@ -225,39 +220,74 @@ namespace CheckupAddIn.ViewModels
         public RelayCommand ToggleFieldPinCommand       { get; private set; }
         public RelayCommand ClearFieldSelPrefsCommand   { get; private set; }
 
-        private string _preset1Name = "Preset 1";
-        public string Preset1Name
+        // ── Preset Bar (T47, TDD §10.5) ──
+
+        /// <summary>One entry per preset, in list order. Rebuilt from <c>_presets</c> after every list change.</summary>
+        public ObservableCollection<PresetButtonVm> PresetButtons { get; } = new();
+
+        /// <summary>The active preset's button (null only transiently).</summary>
+        public PresetButtonVm ActivePresetButton => PresetButtons.FirstOrDefault(b => b.IsActive);
+
+        /// <summary>True when the active preset does not fit into the bar — the More Button then shows its name + active visual (D8).</summary>
+        public bool IsActivePresetHidden => ActivePresetButton?.IsOverflow == true;
+
+        /// <summary>More Button label: "More ›", or the hidden active preset's name + " ›" (D8).</summary>
+        public string MoreButtonLabel => IsActivePresetHidden
+            ? ActivePresetButton.Name + " ›"
+            : LanguageLoader.Get("Btn_PresetMore");
+
+        /// <summary>Tooltip of the More Button: the full name while it stands in for the hidden active preset.</summary>
+        public string MoreButtonTooltip => IsActivePresetHidden ? ActivePresetButton.Name : null;
+
+        public bool CanAddPreset => _presets != null && _presets.Count < PresetsManager.MaxPresets;
+
+        public string AddPresetTooltip => LanguageLoader.Get(CanAddPreset ? "Tip_AddPreset" : "Tip_AddPresetLimit");
+
+        private void SetActivePreset(string id)
         {
-            get => _preset1Name;
-            set { _preset1Name = value ?? ""; OnPropertyChanged(); }
+            _activePresetId = id;
+            UiStateStore.SaveActivePresetId(id);
+            foreach (var b in PresetButtons) b.IsActive = b.Id == id;
+            RaisePresetBarState();
         }
 
-        private string _preset2Name = "Preset 2";
-        public string Preset2Name
+        /// <summary>Re-creates <see cref="PresetButtons"/> from <c>_presets</c> (order, names, active, delete-ability).</summary>
+        private void RebuildPresetButtons()
         {
-            get => _preset2Name;
-            set { _preset2Name = value ?? ""; OnPropertyChanged(); }
+            foreach (var b in PresetButtons) b.PropertyChanged -= OnPresetButtonPropertyChanged;
+            PresetButtons.Clear();
+            if (_presets == null) return;
+            bool canDelete = _presets.Count > 1;
+            foreach (var p in _presets)
+            {
+                var b = new PresetButtonVm { Id = p.Id, Name = p.Name, IsActive = p.Id == _activePresetId, CanDelete = canDelete };
+                b.PropertyChanged += OnPresetButtonPropertyChanged;
+                PresetButtons.Add(b);
+            }
+            RaisePresetBarState();
         }
 
-        private string _preset3Name = "Preset 3";
-        public string Preset3Name
+        private void OnPresetButtonPropertyChanged(object sender, PropertyChangedEventArgs e)
         {
-            get => _preset3Name;
-            set { _preset3Name = value ?? ""; OnPropertyChanged(); }
+            // Raised from the layout pass (PresetOverflowPanel.ArrangeOverride) — keep it to the More Button state.
+            if (e.PropertyName == nameof(PresetButtonVm.IsOverflow) || e.PropertyName == nameof(PresetButtonVm.Name))
+                RaiseMoreButtonState();
         }
 
-        public bool IsPreset1Active => _activePresetIndex == 0;
-        public bool IsPreset2Active => _activePresetIndex == 1;
-        public bool IsPreset3Active => _activePresetIndex == 2;
-
-        private void SetActivePreset(int index)
+        private void RaiseMoreButtonState()
         {
-            if (_activePresetIndex == index) return;
-            _activePresetIndex = index;
-            UiStateStore.SaveActivePresetIndex(index);
-            OnPropertyChanged(nameof(IsPreset1Active));
-            OnPropertyChanged(nameof(IsPreset2Active));
-            OnPropertyChanged(nameof(IsPreset3Active));
+            OnPropertyChanged(nameof(ActivePresetButton));
+            OnPropertyChanged(nameof(IsActivePresetHidden));
+            OnPropertyChanged(nameof(MoreButtonLabel));
+            OnPropertyChanged(nameof(MoreButtonTooltip));
+        }
+
+        private void RaisePresetBarState()
+        {
+            RaiseMoreButtonState();
+            OnPropertyChanged(nameof(CanAddPreset));
+            OnPropertyChanged(nameof(AddPresetTooltip));
+            RelayCommand.RaiseCanExecuteChanged();
         }
 
         private bool _isMultiSelection;
@@ -280,10 +310,9 @@ namespace CheckupAddIn.ViewModels
         //  COMMANDS
         // ══════════════════════════════════════════════
 
-        public RelayCommand PurgeStylesCommand             { get; }
-        public RelayCommand Preset1Command                 { get; }
-        public RelayCommand Preset2Command                 { get; }
-        public RelayCommand Preset3Command                 { get; }
+        public RelayCommand RunRuleCommand                 { get; }
+        public RelayCommand SwitchPresetCommand            { get; }
+        public RelayCommand AddPresetCommand               { get; }
         public RelayCommand InfoCommand                    { get; }
         public RelayCommand ResetCommand                   { get; }
         public RelayCommand CloseCommand                   { get; }
@@ -303,6 +332,18 @@ namespace CheckupAddIn.ViewModels
         public event Action RequestClose;
         public event Action RequestResetWindowSize;
 
+        // T48 D4: the main window, set by CheckupWindow while open — Owner for dialogs/message boxes
+        // raised from here, so they open above and centered on it (never behind Inventor).
+        public Window DialogOwner { get; set; }
+
+        private void ShowWarning(string text, string caption)
+        {
+            if (DialogOwner != null)
+                MessageBox.Show(DialogOwner, text, caption, MessageBoxButton.OK, MessageBoxImage.Warning);
+            else
+                MessageBox.Show(text, caption, MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+
         // ══════════════════════════════════════════════
         //  DESIGN-TIME CONSTRUCTOR (parameterless)
         // ══════════════════════════════════════════════
@@ -310,10 +351,9 @@ namespace CheckupAddIn.ViewModels
         public CheckupViewModel()
         {
             // VS Designer uses this constructor — populate with dummy data only.
-            PurgeStylesCommand           = new RelayCommand(() => { });
-            Preset1Command               = new RelayCommand(() => { });
-            Preset2Command               = new RelayCommand(() => { });
-            Preset3Command               = new RelayCommand(() => { });
+            RunRuleCommand               = new RelayCommand(_ => { });
+            SwitchPresetCommand          = new RelayCommand(_ => { });
+            AddPresetCommand             = new RelayCommand(() => { });
             InfoCommand                  = new RelayCommand(() => { });
             ResetCommand                 = new RelayCommand(() => { });
             CloseCommand                 = new RelayCommand(() => { });
@@ -326,9 +366,12 @@ namespace CheckupAddIn.ViewModels
             ApplyExpertValueCommand      = new RelayCommand(_ => { });
             ToggleFormulaEditCommand     = new RelayCommand(_ => { });
 
-            Preset1Name = "Allgemein";
-            Preset2Name = "Baugruppe";
-            Preset3Name = "Bauteil";
+            _presets = new List<PresetData>
+            {
+                new PresetData { Id = "d1", Name = "Demo" },
+                new PresetData { Id = "d2", Name = "Part" },
+                new PresetData { Id = "d3", Name = "Assembly" },
+            };
 
             FieldCatalog = new List<FieldItem>
             {
@@ -346,8 +389,9 @@ namespace CheckupAddIn.ViewModels
             foreach (var row in Rows)
                 row.SelectedField = _fieldCatalog.FirstOrDefault(fi => fi.Key == row.FieldKey);
 
-            // Show preset 1 as active so the indicator dot is visible in the designer.
-            _activePresetIndex = 0;
+            // Show preset 1 as active so the active-state visual is visible in the designer.
+            _activePresetId = "d1";
+            RebuildPresetButtons();
 
             FileName      = "ExamplePart.ipt";
             StatusMessage = "Design-time preview";
@@ -365,20 +409,16 @@ namespace CheckupAddIn.ViewModels
             _capabilityStore  = capabilityStore;
             _docResolver    = new DocumentResolver(app);
             _catalogBuilder = new FieldCatalogBuilder(_app, _capabilityStore);
-            _stylePurger    = new StylePurger(_app, settings?.StylePurge ?? new UserSettings.StylePurgeSection());
+            _ruleService    = new ILogicRuleService(_app);
             _presetsManager = new PresetsManager(settings?.Presets);
             _fieldWriter    = new FieldWriter(app);
 
             // Load persisted presets (falls back to built-in defaults)
             _presets = _presetsManager.Load();
-            Preset1Name = _presets[0].Name;
-            Preset2Name = _presets[1].Name;
-            Preset3Name = _presets[2].Name;
 
-            PurgeStylesCommand = new RelayCommand(DoPurgeStyles);
-            Preset1Command     = new RelayCommand(() => ApplyPreset(0));
-            Preset2Command     = new RelayCommand(() => ApplyPreset(1));
-            Preset3Command     = new RelayCommand(() => ApplyPreset(2));
+            RunRuleCommand      = new RelayCommand(p => RunRule(p as RowModel));
+            SwitchPresetCommand = new RelayCommand(p => { if (p is PresetButtonVm b) ApplyPreset(b.Id); });
+            AddPresetCommand    = new RelayCommand(AddPreset, () => CanAddPreset);
             InfoCommand        = new RelayCommand(ShowInfo);
             ResetCommand       = new RelayCommand(ResetToDefaults);
             CloseCommand       = new RelayCommand(() => RequestClose?.Invoke());
@@ -506,20 +546,34 @@ namespace CheckupAddIn.ViewModels
                 _pinnedFieldKeys.AddRange(pinnedRaw.Split(';')
                     .Select(k => k.Trim()).Where(k => k.Length > 0));
 
-            int savedIdx = UiStateStore.LoadActivePresetIndex();
-            if (savedIdx > 0 && savedIdx < _presets.Count)
+            // Active preset by ID (T47). One-time migration of the pre-T47 slot index (D11):
+            // an index beyond the (possibly collapsed) list falls back to the first preset.
+            string activeId = UiStateStore.LoadActivePresetId();
+            if (activeId == null)
+            {
+                int legacyIdx = UiStateStore.LoadLegacyActivePresetIndex();
+                if (legacyIdx >= 0)
+                {
+                    activeId = _presets[legacyIdx < _presets.Count ? legacyIdx : 0].Id;
+                    UiStateStore.SaveActivePresetId(activeId);
+                }
+                UiStateStore.DeleteLegacyActivePresetIndex();
+            }
+            var activePreset = _presets.FirstOrDefault(p => p.Id == activeId);
+            if (activePreset != null && activePreset != _presets[0])
             {
                 Rows.Clear();
-                foreach (var key in _presets[savedIdx].FieldKeys)
+                foreach (var key in activePreset.FieldKeys)
                     Rows.Add(new RowModel { FieldKey = key });
-                _activePresetIndex = savedIdx;
+                _activePresetId = activePreset.Id;
                 EnforceButtonRules();
             }
             else
             {
                 InitializeDefaultRows();
-                _activePresetIndex = 0;
+                _activePresetId = _presets[0].Id;
             }
+            RebuildPresetButtons();
 
             SubscribeToInventorEvents();
             DoRefresh();
@@ -558,9 +612,8 @@ namespace CheckupAddIn.ViewModels
                 bool isSpecial = grp.Key == FieldCatalogBuilder.GRP_SPECIAL;
                 var items = grp.ToList();
 
-                // Sonderfunktionen: check if any active SPECIAL:LOGIC: entry is present
-                bool hasActiveLcEntry = isSpecial && items.Any(f => f.Key.StartsWith("SPECIAL:LOGIC:"));
-                bool autoCollapsed    = isSpecial && !hasActiveLcEntry;
+                // Special Functions always holds "Run iLogic Rule" (T46) → only auto-collapse if truly empty.
+                bool autoCollapsed    = isSpecial && items.Count == 0;
                 bool collapsed        = autoCollapsed
                     || UiStateStore.LoadFieldSelGroupCollapsed(grp.Key, false);
 
@@ -1168,7 +1221,13 @@ namespace CheckupAddIn.ViewModels
                 }
             }
 
-            if (_selectedDocs.Count == 0) { StatusMessage = LanguageLoader.Get("Msg_NoDocument"); return; }
+            if (_selectedDocs.Count == 0)
+            {
+                // No document open → Rule Buttons disabled (D20), but still labelled.
+                UpdateRuleRows();
+                StatusMessage = LanguageLoader.Get("Msg_NoDocument");
+                return;
+            }
 
             long _tDocRes = _sw.ElapsedMilliseconds;
 
@@ -1186,14 +1245,14 @@ namespace CheckupAddIn.ViewModels
                 try { _docPaths[i] = _selectedDocs[i].FullFileName; } catch { _docPaths[i] = ""; }
             string _docSig   = BuildDocSignature(_docPaths);
             bool   _cacheHit = !_refreshCacheInvalid && _docSig == _refreshCacheSig && _refreshValueCache.Count > 0;
-            if (!_cacheHit) { _refreshValueCache.Clear(); _refreshHasFormulaCache.Clear(); _refreshFormulaCache.Clear(); }
+            if (!_cacheHit) { _refreshValueCache.Clear(); _refreshHasFormulaCache.Clear(); _refreshFormulaCache.Clear(); _rulePresenceCache.Clear(); }
 
             // Batch value reads (Kit #5): open each PropertySet once for all rows on a cache miss.
             Dictionary<string, string>[] _batchValues = null;
             if (!_cacheHit)
             {
                 var _batchKeys = Rows
-                    .Where(r => !r.IsInlineEditing && !string.IsNullOrEmpty(r.FieldKey))
+                    .Where(r => !r.IsInlineEditing && !string.IsNullOrEmpty(r.FieldKey) && !r.IsRuleRow)
                     .Select(r => r.FieldKey)
                     .Distinct()
                     .ToArray();
@@ -1206,6 +1265,9 @@ namespace CheckupAddIn.ViewModels
             {
                 // Don't disrupt an active inline edit
                 if (row.IsInlineEditing) continue;
+
+                // Rule Rows carry no value — label/state set by UpdateRuleRows below (D18).
+                if (row.IsRuleRow) continue;
 
                 // fx formula state is recomputed below for value-bearing rows; reset here so
                 // SPECIAL / empty / reconfigured rows never retain a stale fx toggle.
@@ -1307,6 +1369,8 @@ namespace CheckupAddIn.ViewModels
                     }
                 }
             }
+
+            UpdateRuleRows();
 
             long _tRows = _sw.ElapsedMilliseconds;
 
@@ -1978,6 +2042,8 @@ namespace CheckupAddIn.ViewModels
             if (_isRefreshing) return;
             if (row?.SelectedField == null) return;
             if (row.SelectedField.Key == row.FieldKey) return;
+            // Re-picking "Run iLogic Rule" on a Rule Row keeps its assigned rule.
+            if (row.SelectedField.IsRuleEntry && row.IsRuleRow) return;
 
             row.FieldKey        = row.SelectedField.Key;
             row.FieldLabel      = row.SelectedField.RowLabel;
@@ -2147,7 +2213,7 @@ namespace CheckupAddIn.ViewModels
                 logicGroup = found?.Group;
                 if (logicGroup == null || string.IsNullOrEmpty(logicGroup.TargetFieldKey))
                 {
-                    StatusMessage = "Logic Set has no target field configured.";
+                    StatusMessage = LanguageLoader.Get("Msg_LogicNoTarget");
                     row.IsInlineEditing = false;
                     return;
                 }
@@ -2218,9 +2284,8 @@ namespace CheckupAddIn.ViewModels
                     }
 
                     string details = string.Join("\n", errors.Select(e => $"  {e.fileName}: {e.error}"));
-                    MessageBox.Show(
-                        $"Write failed for {errors.Count} document(s):\n\n{details}",
-                        "Checkup – Write Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    ShowWarning(string.Format(LanguageLoader.Get("Dlg_WriteError_Body"), errors.Count, details),
+                                LanguageLoader.Get("Dlg_WriteError_Title"));
                     StatusMessage = string.Format(LanguageLoader.Get("Msg_WriteErrors"), errors.Count);
                 }
                 else
@@ -2404,9 +2469,8 @@ namespace CheckupAddIn.ViewModels
                 {
                     _stickyDocs = null;
                     string details = string.Join("\n", errors.Select(e => $"  {e.fileName}: {e.error}"));
-                    MessageBox.Show(
-                        $"Write failed for {errors.Count} document(s):\n\n{details}",
-                        "Checkup – Write Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    ShowWarning(string.Format(LanguageLoader.Get("Dlg_WriteError_Body"), errors.Count, details),
+                                LanguageLoader.Get("Dlg_WriteError_Title"));
                     StatusMessage = string.Format(LanguageLoader.Get("Msg_WriteErrors"), errors.Count);
                     return; // batch flushes any partial successes on scope exit
                 }
@@ -2487,9 +2551,8 @@ namespace CheckupAddIn.ViewModels
                 {
                     _stickyDocs = null;
                     string details = string.Join("\n", errors.Select(e => $"  {e.fileName}: {e.error}"));
-                    MessageBox.Show(
-                        $"Write failed for {errors.Count} document(s):\n\n{details}",
-                        "Checkup – Write Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    ShowWarning(string.Format(LanguageLoader.Get("Dlg_WriteError_Body"), errors.Count, details),
+                                LanguageLoader.Get("Dlg_WriteError_Title"));
                     StatusMessage = string.Format(LanguageLoader.Get("Msg_WriteErrors"), errors.Count);
                     return; // batch flushes any partial successes on scope exit
                 }
@@ -2558,25 +2621,34 @@ namespace CheckupAddIn.ViewModels
         //  PRESETS
         // ══════════════════════════════════════════════
 
-        private void ApplyPreset(int index)
+        // Presets are addressed by their stable ID (T47, TDD §10.5) — never by position.
+        private int PresetIndexOf(string id) =>
+            _presets == null || string.IsNullOrEmpty(id) ? -1 : _presets.FindIndex(p => p.Id == id);
+
+        private void ApplyPreset(string id)
         {
-            if (_presets == null || index < 0 || index >= _presets.Count) return;
+            int index = PresetIndexOf(id);
+            if (index < 0) return;
 
             Rows.Clear();
             foreach (var key in _presets[index].FieldKeys)
                 Rows.Add(new RowModel { FieldKey = key });
 
-            SetActivePreset(index);
+            SetActivePreset(id);
             DoRefresh();
             StatusMessage = string.Format(LanguageLoader.Get("Msg_PresetApplied"), _presets[index].Name, DateTime.Now.ToString("HH:mm:ss"));
         }
 
-        public string GetPresetName(int index) =>
-            (index >= 0 && index < _presets?.Count) ? _presets[index].Name : "";
-
-        public void SavePreset(int index, string name)
+        public string GetPresetName(string id)
         {
-            if (_presets == null || index < 0 || index >= _presets.Count) return;
+            int index = PresetIndexOf(id);
+            return index >= 0 ? _presets[index].Name : "";
+        }
+
+        public void SavePreset(string id, string name)
+        {
+            int index = PresetIndexOf(id);
+            if (index < 0) return;
 
             var newKeys = Rows.Select(r => r.FieldKey).ToList();
             bool nameChanged = !string.Equals(name, DemoPresetName, StringComparison.Ordinal);
@@ -2588,28 +2660,83 @@ namespace CheckupAddIn.ViewModels
             _presets[index].FieldKeys = newKeys;
             _presetsManager.Save(_presets);
 
-            switch (index)
-            {
-                case 0: Preset1Name = name; break;
-                case 1: Preset2Name = name; break;
-                case 2: Preset3Name = name; break;
-            }
+            var button = PresetButtons.FirstOrDefault(b => b.Id == id);
+            if (button != null) button.Name = name;
 
             StatusMessage = string.Format(LanguageLoader.Get("Msg_PresetSaved"), name, DateTime.Now.ToString("HH:mm:ss"));
         }
 
+        /// <summary>
+        /// "+" (D4): appends a copy of the ACTIVE preset carrying the live Rows (incl. unsaved changes),
+        /// named "&lt;name&gt; (n)", and makes it active. The Rows themselves stay as they are.
+        /// </summary>
+        private void AddPreset()
+        {
+            if (!CanAddPreset) return;
+            int activeIdx = PresetIndexOf(_activePresetId);
+            var source    = activeIdx >= 0 ? _presets[activeIdx] : _presets[0];
+            var copy      = PresetsManager.CreateCopy(source, Rows.Select(r => r.FieldKey), _presets.Select(p => p.Name));
+
+            _presets.Add(copy);
+            _presetsManager.Save(_presets);
+            _activePresetId = copy.Id;
+            UiStateStore.SaveActivePresetId(copy.Id);
+            RebuildPresetButtons();
+            StatusMessage = string.Format(LanguageLoader.Get("Msg_PresetAdded"), copy.Name, DateTime.Now.ToString("HH:mm:ss"));
+        }
+
+        /// <summary>
+        /// Delete (D7) — the caller has already confirmed. The last preset is never deleted; deleting the
+        /// active preset activates its left neighbour (or the new first) and applies it.
+        /// </summary>
+        public void DeletePreset(string id)
+        {
+            int index = PresetIndexOf(id);
+            if (index < 0 || _presets.Count <= 1) return;
+
+            string name      = _presets[index].Name;
+            bool   wasActive = id == _activePresetId;
+            _presets.RemoveAt(index);
+            _presetsManager.Save(_presets);
+
+            if (wasActive)
+            {
+                string nextId = _presets[PresetsManager.IndexAfterDelete(index)].Id;
+                _activePresetId = nextId;
+                RebuildPresetButtons();
+                ApplyPreset(nextId);
+            }
+            else
+            {
+                RebuildPresetButtons();
+            }
+            StatusMessage = string.Format(LanguageLoader.Get("Msg_PresetDeleted"), name, DateTime.Now.ToString("HH:mm:ss"));
+        }
+
+        /// <summary>
+        /// Drag-and-drop reorder (D9): moves the preset so it lands before the element currently at
+        /// <paramref name="insertIndex"/> (0..Count; Count = end of the list). The active preset stays active.
+        /// </summary>
+        public void MovePreset(string id, int insertIndex)
+        {
+            int from = PresetIndexOf(id);
+            if (from < 0) return;
+            if (!PresetsManager.Move(_presets, from, insertIndex)) return;
+            _presetsManager.Save(_presets);
+            RebuildPresetButtons();
+        }
+
+        /// <summary>Drop onto the More Button (D9 B): moves the preset to the end of the list.</summary>
+        public void MovePresetToEnd(string id) => MovePreset(id, _presets?.Count ?? 0);
+
+        /// <summary>Current list position of a preset (for the view's drop-position math), -1 if unknown.</summary>
+        public int GetPresetIndex(string id) => PresetIndexOf(id);
+
         // ── Demo mode warning ─────────────────────────────────────────────────
 
-        private bool IsDemoActive()
-        {
-            if (_presets == null || _presets.Count != 3) return false;
-            // Primary: flag set by PresetsManager (new installations / after Reset).
-            if (_presets.All(p => p.IsDemo)) return true;
-            // Fallback: detect by content for Registry presets that predate the IsDemo field.
-            return _presets.All(p =>
-                string.Equals(p.Name, DemoPresetName, StringComparison.Ordinal) &&
-                p.FieldKeys.SequenceEqual(_demoDefaultFieldKeys));
-        }
+        // True when ALL presets (any count ≥ 1, T47) are still demo presets — primary: IsDemo flag;
+        // fallback: name + field keys for registry presets that predate the IsDemo field.
+        private bool IsDemoActive() => PresetsManager.IsUntouchedDemo(_presets);
 
         private bool ShouldShowDemoWarning()
         {
@@ -2631,13 +2758,15 @@ namespace CheckupAddIn.ViewModels
             dlg.ShowDialog();
         }
 
-        public void ExportPreset(int slotIndex, string path)
+        public void ExportPreset(string id, string path)
         {
+            int index = PresetIndexOf(id);
+            if (index < 0) return;
             try
             {
-                _presetsManager.ExportPresetToLibrary(_presets[slotIndex], path);
+                _presetsManager.ExportPresetToLibrary(_presets[index], path);
                 StatusMessage = string.Format(LanguageLoader.Get("Msg_PresetExported"),
-                    _presets[slotIndex].Name, DateTime.Now.ToString("HH:mm:ss"));
+                    _presets[index].Name, DateTime.Now.ToString("HH:mm:ss"));
             }
             catch (Exception ex)
             {
@@ -2671,17 +2800,66 @@ namespace CheckupAddIn.ViewModels
             }
         }
 
-        public void ImportPresetIntoSlot(int slotIndex, PresetData data)
+        /// <summary>
+        /// Import (D12): replaces the target preset's name + field keys. The imported file ID is kept
+        /// unless another preset already uses it (or the file entry has none) — then the target keeps its ID.
+        /// </summary>
+        public void ImportPresetInto(string targetId, PresetData data)
         {
-            _presets[slotIndex] = new PresetData { Name = data.Name, FieldKeys = new List<string>(data.FieldKeys) };
+            int index = PresetIndexOf(targetId);
+            if (index < 0 || data == null) return;
+
+            string newId = PresetsManager.ResolveImportId(targetId, data.Id,
+                _presets.Where((p, i) => i != index).Select(p => p.Id));
+            bool wasActive = targetId == _activePresetId;
+
+            _presets[index] = new PresetData
+            {
+                Id        = newId,
+                Name      = data.Name ?? "",
+                FieldKeys = new List<string>(data.FieldKeys ?? new List<string>())
+            };
             _presetsManager.Save(_presets);
-            if (slotIndex == 0) Preset1Name = _presets[0].Name;
-            else if (slotIndex == 1) Preset2Name = _presets[1].Name;
-            else Preset3Name = _presets[2].Name;
-            int activeIdx = UiStateStore.LoadActivePresetIndex();
-            if (activeIdx == slotIndex) ApplyPreset(slotIndex);
+
+            if (wasActive)
+            {
+                _activePresetId = newId;
+                RebuildPresetButtons();
+                ApplyPreset(newId);
+            }
+            else
+            {
+                RebuildPresetButtons();
+            }
             StatusMessage = string.Format(LanguageLoader.Get("Msg_PresetImported"),
                 data.Name, DateTime.Now.ToString("HH:mm:ss"));
+        }
+
+        /// <summary>Current preset list (read-only view) — the import dialogs check conflicts + free slots against it.</summary>
+        public IReadOnlyList<PresetData> Presets => _presets ?? new List<PresetData>();
+
+        /// <summary>
+        /// Multi-import "Add as new" (D15): the view has already asked about every conflict. Returns false —
+        /// and changes nothing — when the additions would exceed the 12-preset limit. The active preset stays
+        /// active; if it was overwritten, its new field keys are applied.
+        /// </summary>
+        public bool ImportPresetsAsNew(IReadOnlyList<(PresetData Data, string OverwriteTargetId)> items)
+        {
+            if (_presets == null || items == null || items.Count == 0) return true;
+            if (!PresetsManager.ApplyMultiImport(_presets, items, out var renamedIds)) return false;
+            _presetsManager.Save(_presets);
+
+            bool activeOverwritten = items.Any(i => i.OverwriteTargetId == _activePresetId);
+            if (renamedIds.TryGetValue(_activePresetId, out string newActiveId))
+            {
+                _activePresetId = newActiveId;
+                UiStateStore.SaveActivePresetId(newActiveId);
+            }
+            RebuildPresetButtons();
+            if (activeOverwritten) ApplyPreset(_activePresetId);
+
+            StatusMessage = string.Format(LanguageLoader.Get("Msg_PresetsImported"), items.Count, DateTime.Now.ToString("HH:mm:ss"));
+            return true;
         }
 
         // ══════════════════════════════════════════════
@@ -2702,17 +2880,15 @@ namespace CheckupAddIn.ViewModels
             _demoShownThisSession = false;
             _demoWindowOpenCount  = 0;
 
-            if (_presets.Count == 3)
-            {
-                Preset1Name = _presets[0].Name;
-                Preset2Name = _presets[1].Name;
-                Preset3Name = _presets[2].Name;
-            }
+            // D14: the settings file's preset list (factory "Demo" or the administrator's company presets);
+            // the first becomes active.
+            _activePresetId = _presets.Count > 0 ? _presets[0].Id : "";
+            RebuildPresetButtons();
 
             UiStateStore.ClearWindowSizes();
             RequestResetWindowSize?.Invoke();
 
-            SetActivePreset(0);
+            SetActivePreset(_activePresetId);
             ApplyFileNameViewMode(0);   // back to Standard (S) view, persisted to HKCU
             _catalogBuilder?.InvalidateCache();
             InvalidateRefreshCache();
@@ -2722,25 +2898,225 @@ namespace CheckupAddIn.ViewModels
         }
 
         // ══════════════════════════════════════════════
-        //  PURGE STYLES
+        //  RUN iLOGIC RULE (Rule Rows — T46, TDD §10.4)
         // ══════════════════════════════════════════════
 
-        private void DoPurgeStyles()
+        // Presence of assigned rules, keyed by Field Key. Re-checked on every non-cached refresh and
+        // whenever the Rule Selector opens (D22); served from here on a CACHE=HIT refresh.
+        // Only Document Rules are cached (their check is a COM call); rule FILES are re-checked on every
+        // refresh (cheap File.Exists), so a renamed-back file un-greys on the next refresh by itself.
+        private readonly Dictionary<string, bool> _rulePresenceCache = new(StringComparer.Ordinal);
+
+        // True from the start of a run until the dispatcher is idle again (D10 + D21): clicks queued
+        // while the synchronous rule ran are processed first — and ignored — before the guard drops.
+        private bool _ruleRunInProgress;
+
+        // Environment.TickCount when the last run ended. A click within the system double-click time
+        // after that is the second half of a double-click (a short rule finishes before it arrives) → ignored.
+        private int _ruleRunEndTick;
+        private bool _hasRuleRunEnded;
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern uint GetDoubleClickTime();
+
+        private IReadOnlyList<RuleSelectorGroupVm> _ruleSelectorAllGroups = System.Array.Empty<RuleSelectorGroupVm>();
+        private IReadOnlyList<RuleSelectorGroupVm> _ruleSelectorGroups    = System.Array.Empty<RuleSelectorGroupVm>();
+        /// <summary>Visible Rule Selector groups (filtered; groups without matches are dropped).</summary>
+        public IReadOnlyList<RuleSelectorGroupVm> RuleSelectorGroups
         {
-            var doc = _docResolver.GetActiveOrSelectedDocument(out string error);
-            if (doc == null) { StatusMessage = error; return; }
-            string result;
-            try
+            get => _ruleSelectorGroups;
+            private set { _ruleSelectorGroups = value; OnPropertyChanged(); }
+        }
+
+        private string _ruleSelectorHint = "";
+        /// <summary>Greyed hint shown when the Rule Selector has nothing to list (no rules / iLogic not loaded).</summary>
+        public string RuleSelectorHint
+        {
+            get => _ruleSelectorHint;
+            private set { _ruleSelectorHint = value ?? ""; OnPropertyChanged(); OnPropertyChanged(nameof(HasRuleSelectorHint)); }
+        }
+        public bool HasRuleSelectorHint => !string.IsNullOrEmpty(_ruleSelectorHint);
+
+        private string _ruleSelectorFilterText = "";
+        /// <summary>Search box text of the Rule Selector — case-insensitive contains-match on the rule name.</summary>
+        public string RuleSelectorFilterText
+        {
+            get => _ruleSelectorFilterText;
+            set
             {
-                result = _stylePurger.UpdateAndPurge(doc);
+                string v = value ?? "";
+                if (_ruleSelectorFilterText == v) return;
+                _ruleSelectorFilterText = v;
+                OnPropertyChanged();
+                ApplyRuleSelectorFilter();
             }
-            catch (Exception ex)
-            {
-                result = $"Fehler beim Bereinigen: {ex.Message}";
-            }
-            // DoRefresh overwrites StatusMessage — set the purge result after it.
+        }
+
+        private void ApplyRuleSelectorFilter()
+        {
+            string filter = _ruleSelectorFilterText;
+            foreach (var g in _ruleSelectorAllGroups)
+                g.FilteredItems = string.IsNullOrEmpty(filter)
+                    ? g.AllItems
+                    : g.AllItems.Where(i => i.DisplayName.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+            RuleSelectorGroups = _ruleSelectorAllGroups.Where(g => g.HasFilteredItems).ToList();
+        }
+
+        /// <summary>Right-click on a Rule Button (any state): (re)scans the rules and opens the Rule Selector (D5).</summary>
+        public void OpenRuleSelector(RowModel row)
+        {
+            if (row == null || !row.IsRuleRow || _ruleService == null) return;
+            foreach (var r in Rows)
+                if (r != row) r.IsRuleSelectorOpen = false;
+
+            List<RuleSelectorGroupVm> groups;
+            try { groups = _ruleService.BuildSelectorGroups(); }
+            catch { groups = new List<RuleSelectorGroupVm>(); }
+
+            _ruleSelectorAllGroups = groups;
+            _ruleSelectorFilterText = "";
+            OnPropertyChanged(nameof(RuleSelectorFilterText));
+            ApplyRuleSelectorFilter();
+            RuleSelectorHint = groups.Count > 0 ? ""
+                : LanguageLoader.Get(_ruleService.IsILogicAvailable ? "Rule_NoRulesFound" : "Rule_ILogicUnavailable");
+
+            _rulePresenceCache.Clear();
+            UpdateRuleRows();
+            row.IsRuleSelectorOpen = true;
+        }
+
+        /// <summary>Assigns the picked rule to the Row (replaces any previous one).</summary>
+        public void AssignRule(RowModel row, RuleSelectorItem item)
+        {
+            if (row == null || item == null || !item.IsSelectable) return;
+            row.IsRuleSelectorOpen = false;
+            row.FieldKey = item.Key;
+            _rulePresenceCache.Remove(item.Key);
+            UpdateRuleRows();
+        }
+
+        /// <summary>Left-click on a Rule Button: runs the assigned rule on the active document (D7, D10).</summary>
+        private void RunRule(RowModel row)
+        {
+            if (row == null || _ruleRunInProgress || _ruleService == null) return;
+            if (_hasRuleRunEnded && unchecked(System.Environment.TickCount - _ruleRunEndTick) < (int)GetDoubleClickTime()) return;
+            if (!RuleKey.TryParse(row.FieldKey, out RuleSource source, out string name)) return;
+
+            // Re-check presence right now — the file may have been restored since the last refresh.
+            _rulePresenceCache.Remove(row.FieldKey);
+            UpdateRuleRows();
+            if (source == RuleSource.None || row.IsRuleMissing || !row.IsRuleAvailable) return;
+
+            string display = RuleKey.DisplayName(source, name);
+            _ruleRunInProgress = true;
+            row.IsRuleRunning  = true;
+            string error;
+            try { error = _ruleService.Run(source, name); }
+            catch (Exception ex) { error = ex.Message; }
+            finally { row.IsRuleRunning = false; }
+
+            // Rules usually change values (and may add iProperties/parameters) → full re-read.
+            _catalogBuilder.InvalidateCache();
+            InvalidateRefreshCache();
+            _rulePresenceCache.Clear();
             DoRefresh();
-            StatusMessage = result;
+            // DoRefresh overwrites StatusMessage — set the result after it.
+            StatusMessage = error == null
+                ? string.Format(LanguageLoader.Get("Rule_RunDone"), display)
+                : string.Format(LanguageLoader.Get("Rule_RunFailed"), display, error);
+
+            Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,
+                new Action(() =>
+                {
+                    _ruleRunInProgress = false;
+                    _ruleRunEndTick    = System.Environment.TickCount;
+                    _hasRuleRunEnded   = true;
+                }));
+        }
+
+        /// <summary>
+        /// Sets label / state / tooltip of every Rule Row. Rule Rows carry no value: they are skipped by
+        /// the value pipeline (batch reads, cache, Logic post-passes — D18).
+        /// </summary>
+        private void UpdateRuleRows()
+        {
+            var ruleRows = Rows.Where(r => r.IsRuleRow).ToList();
+            if (ruleRows.Count == 0) return;
+
+            Document active = null;
+            try { active = _app?.ActiveDocument; } catch { }
+            string activeName = "";
+            if (active != null)
+            {
+                try { activeName = System.IO.Path.GetFileName(active.FullFileName); } catch { }
+                if (string.IsNullOrEmpty(activeName)) try { activeName = active.DisplayName; } catch { }
+            }
+
+            var ruleEntry = FieldCatalog?.FirstOrDefault(f => f.IsRuleEntry);
+            string ruleLabel = ruleEntry?.RowLabel ?? LanguageLoader.Get("Field_RunILogicRule");
+
+            IReadOnlyList<string> externalDirs = null;
+            HashSet<string>       activeDocRules = null;
+
+            foreach (var row in ruleRows)
+            {
+                if (ruleEntry != null) row.SelectedField = ruleEntry;
+                row.FieldLabel      = ruleLabel;
+                row.IsFieldMissing  = false;
+                row.IsWritableField = false;
+                row.HasPickerButton = false;
+                row.HasFormula      = false;
+                row.DisplayValue    = "";
+                row.IsRuleAvailable = active != null;
+
+                RuleKey.TryParse(row.FieldKey, out RuleSource source, out string name);
+                if (source == RuleSource.None)
+                {
+                    row.IsRuleEmpty    = true;
+                    row.IsRuleMissing  = false;
+                    row.RuleButtonText = LanguageLoader.Get("Rule_EmptyHint");
+                    row.RuleToolTip    = LanguageLoader.Get("Tip_RuleEmpty");
+                    continue;
+                }
+
+                bool present;
+                if (source == RuleSource.Document && active == null)
+                {
+                    present = true;   // no document to look into → not "missing", just disabled (D20)
+                }
+                else if (source == RuleSource.Document)
+                {
+                    if (!_rulePresenceCache.TryGetValue(row.FieldKey, out present))
+                    {
+                        try
+                        {
+                            activeDocRules ??= new HashSet<string>(
+                                _ruleService.GetDocumentRules(active).Where(r => r.IsActive).Select(r => r.Name),
+                                StringComparer.OrdinalIgnoreCase);
+                            present = activeDocRules.Contains(name);
+                        }
+                        catch { present = false; }
+                        _rulePresenceCache[row.FieldKey] = present;
+                    }
+                }
+                else
+                {
+                    try
+                    {
+                        if (source == RuleSource.External) externalDirs ??= _ruleService.GetExternalRuleDirectories();
+                        present = _ruleService.ResolveRuleFile(source, name, externalDirs) != null;
+                    }
+                    catch { present = false; }
+                }
+
+                row.IsRuleEmpty    = false;
+                row.IsRuleMissing  = !present;
+                row.RuleButtonText = RuleKey.DisplayName(source, name);
+                string tip = name;
+                if (!present) tip += "\n" + LanguageLoader.Get("Rule_Missing");
+                if (active != null) tip += "\n" + string.Format(LanguageLoader.Get("Tip_RuleStartsOn"), activeName);
+                row.RuleToolTip = tip;
+            }
         }
 
         // ══════════════════════════════════════════════
@@ -2750,7 +3126,7 @@ namespace CheckupAddIn.ViewModels
         private void ShowInfo()
         {
             new Views.InfoDialog(Services.InfoPanelBuilder.BuildMainWindowHelp(),
-                "MainAddin", "Win_Title_CheckupInfo", 520, 480).ShowDialog();
+                "MainAddin", "Win_Title_CheckupInfo", 520, 480) { Owner = DialogOwner }.ShowDialog();
         }
 
         // ══════════════════════════════════════════════

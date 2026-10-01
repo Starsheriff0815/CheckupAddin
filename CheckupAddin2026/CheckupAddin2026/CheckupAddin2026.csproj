@@ -79,7 +79,10 @@
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<TargetPath>Catalogs\Demo.catalog.json</TargetPath>
 		</None>
-		<None Include="Bereinigen IDW+IPT+IAM.iLogicVb" />
+		<!-- Shipped template iLogic rules (T46) → bin\Rules\ — listed in the Rule Selector as "Checkup". -->
+		<None Update="Rules\*.iLogicVb">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
 	</ItemGroup>
 
 	<!-- Create empty Catalogs\ and Capabilities\ subfolders in the output directory.

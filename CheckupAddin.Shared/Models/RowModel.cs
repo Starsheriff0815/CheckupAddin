@@ -67,6 +67,8 @@ namespace CheckupAddIn.Models
                 _fieldKey = value ?? "";
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(IsSpecialRow));
+                OnPropertyChanged(nameof(IsRuleRow));
+                OnPropertyChanged(nameof(IsRuleButtonVisible));
                 OnPropertyChanged(nameof(IsPlainTextEditMode));
                 OnPropertyChanged(nameof(IsNormalDisplayMode));
                 OnPropertyChanged(nameof(IsValueMismatchDisplayMode));
@@ -566,6 +568,72 @@ namespace CheckupAddIn.Models
         /// <summary>True for any SPECIAL: row — shows "S:" prefix in the field-selector ComboBox header.</summary>
         public bool IsSpecialRow => _fieldKey.StartsWith("SPECIAL:", StringComparison.Ordinal);
 
+        // ── Rule Row (T46 — "Run iLogic Rule") ──
+        // A Rule Row carries no value: its whole Value Field is one Rule Button. Left-click runs the
+        // assigned iLogic rule, right-click opens the Rule Selector. State is set by CheckupViewModel.
+
+        /// <summary>True when this row's Field Key is <c>SPECIAL:RULE:…</c>.</summary>
+        public bool IsRuleRow => Services.RuleKey.IsRuleKey(_fieldKey);
+
+        /// <summary>Rule Button shown instead of every value display/edit control.</summary>
+        public bool IsRuleButtonVisible => IsRuleRow && IsDisplayMode;
+
+        private string _ruleButtonText = "";
+        /// <summary>Rule name shown on the Rule Button, or the "Right Click to Set iLogic Rule" hint.</summary>
+        public string RuleButtonText
+        {
+            get => _ruleButtonText;
+            set { string v = value ?? ""; if (_ruleButtonText == v) return; _ruleButtonText = v; OnPropertyChanged(); }
+        }
+
+        private string _ruleToolTip = "";
+        /// <summary>Full rule name + "Rule starts on: &lt;active document&gt;" (D16).</summary>
+        public string RuleToolTip
+        {
+            get => _ruleToolTip;
+            set { string v = value ?? ""; if (_ruleToolTip == v) return; _ruleToolTip = v; OnPropertyChanged(); }
+        }
+
+        private bool _isRuleEmpty = true;
+        /// <summary>No rule assigned yet — hint label in red, left-click does nothing (D4).</summary>
+        public bool IsRuleEmpty
+        {
+            get => _isRuleEmpty;
+            set { if (_isRuleEmpty == value) return; _isRuleEmpty = value; OnPropertyChanged(); }
+        }
+
+        private bool _isRuleMissing;
+        /// <summary>Assigned rule not present here — greyed + strikethrough, left-click does nothing (D8).</summary>
+        public bool IsRuleMissing
+        {
+            get => _isRuleMissing;
+            set { if (_isRuleMissing == value) return; _isRuleMissing = value; OnPropertyChanged(); }
+        }
+
+        private bool _isRuleAvailable = true;
+        /// <summary>False when no document is open — the Rule Button is disabled (D20).</summary>
+        public bool IsRuleAvailable
+        {
+            get => _isRuleAvailable;
+            set { if (_isRuleAvailable == value) return; _isRuleAvailable = value; OnPropertyChanged(); }
+        }
+
+        private bool _isRuleRunning;
+        /// <summary>True while this row's rule runs (pressed look).</summary>
+        public bool IsRuleRunning
+        {
+            get => _isRuleRunning;
+            set { if (_isRuleRunning == value) return; _isRuleRunning = value; OnPropertyChanged(); }
+        }
+
+        private bool _isRuleSelectorOpen;
+        /// <summary>Controls the Rule Selector popup of this row.</summary>
+        public bool IsRuleSelectorOpen
+        {
+            get => _isRuleSelectorOpen;
+            set { if (_isRuleSelectorOpen == value) return; _isRuleSelectorOpen = value; OnPropertyChanged(); }
+        }
+
         // ── Multi-token display mode (Logic rows with MultiPick / PairTransform card) ──
 
         private bool _isMultiTokenMode;
@@ -764,10 +832,10 @@ namespace CheckupAddIn.Models
         }
 
         /// <summary>Display variant: normal TextBlock (not multi-token, no value mismatch, or in edit mode).</summary>
-        public bool IsNormalDisplayMode => IsDisplayMode && !_isMultiTokenMode && !HasValueMismatch;
+        public bool IsNormalDisplayMode => IsDisplayMode && !_isMultiTokenMode && !HasValueMismatch && !IsRuleRow;
 
         /// <summary>Display variant: mismatch split — matched part normal, unmatched tail red (Logic Dropdown/Search rows).</summary>
-        public bool IsValueMismatchDisplayMode => IsDisplayMode && !_isMultiTokenMode && HasValueMismatch;
+        public bool IsValueMismatchDisplayMode => IsDisplayMode && !_isMultiTokenMode && HasValueMismatch && !IsRuleRow;
 
 
         /// <summary>Applies a live filter to CatalogDropdownView for Search card mode.
@@ -831,6 +899,7 @@ namespace CheckupAddIn.Models
             OnPropertyChanged(nameof(IsValueMismatchDisplayMode));
             OnPropertyChanged(nameof(IsFormulaEditMode));
             OnPropertyChanged(nameof(ShowFormulaToggle));
+            OnPropertyChanged(nameof(IsRuleButtonVisible));
         }
 
         public event PropertyChangedEventHandler PropertyChanged;

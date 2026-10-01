@@ -12,12 +12,12 @@ namespace CheckupAddIn.Services
 {
     /// <summary>
     /// Top-level settings object loaded from <c>Checkup_Settings.json</c> placed next to the add-in DLL.
-    /// Combines StylePurger configuration and preset factory defaults in one file.
+    /// Holds the preset factory defaults.
     /// </summary>
     /// <remarks>
     /// <b>File location:</b> same folder as <c>CheckupAddIn.dll</c> (the deployed add-in directory).
     ///   This file ships with the add-in and is loaded once at Inventor startup. Admins can edit it
-    ///   to pre-configure StylePurge paths and default preset field lists for all users.
+    ///   to pre-configure the default preset field lists for all users.
     ///
     /// <b>User customizations (per-user):</b> stored in the Windows Registry at
     ///   <c>HKCU\Software\Checkup 2026\Presets</c> (JSON blob, REG_SZ).
@@ -35,11 +35,12 @@ namespace CheckupAddIn.Services
     /// </remarks>
     public class UserSettings
     {
-        public StylePurgeSection StylePurge              { get; set; } = new();
         public List<PresetData>  Presets                 { get; set; } = new();
         // SharedRootPath removed — distribution path is always addinDir (DLL location).
-        // Old Checkup_Settings.json files that still contain "SharedRootPath" are read
-        // without error; System.Text.Json silently ignores unknown properties.
+        // StylePurge section removed (T46 — Style Purger replaced by "Run iLogic Rule"; its settings
+        // now live in the shipped purge rule). Old Checkup_Settings.json files that still contain
+        // "SharedRootPath" or "StylePurge" are read without error: both JSON libraries silently
+        // ignore unknown properties.
 
 #if NET48
         [Newtonsoft.Json.JsonIgnore]
@@ -74,7 +75,8 @@ namespace CheckupAddIn.Services
 
         // Tolerate Windows paths typed with single backslashes, e.g. "Z:\Checkup\CheckupAddIn.dll".
         // Strict JSON requires "\\" for a literal backslash; a lone "\" before a non-escape character
-        // is invalid and fails the WHOLE parse (silently reverting StylePurge + presets to defaults).
+        // is invalid and fails the WHOLE parse (silently reverting the presets to defaults). Kept after
+        // T46: old deployed files still carry a single-backslash StylePurge.TemplateFilePath.
         // This doubles any lone backslash so naive entries load, while preserving genuine escapes:
         //   kept as-is → already-doubled "\\", escaped quote/slash "\" "\/", and unicode "\uXXXX".
         //   doubled    → everything else, including "\t" "\n" etc. (always a path char here, never a
@@ -86,14 +88,5 @@ namespace CheckupAddIn.Services
 
         internal static string NormalizeWindowsPaths(string json) =>
             _loneBackslash.Replace(json, m => m.Groups[1].Success ? m.Value : @"\\");
-
-        public class StylePurgeSection
-        {
-            public string       TemplateFilePath        { get; set; } = @"V:\CAD\INV\Templates\Standard.idw";
-            public List<string> BorderDefinitions       { get; set; } = new();
-            public List<string> TitleBlockDefinitions   { get; set; } = new();
-            public List<string> SketchedSymbolsToCopy   { get; set; } = new();
-            public List<string> SketchedSymbolsToDelete { get; set; } = new();
-        }
     }
 }

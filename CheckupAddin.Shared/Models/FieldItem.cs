@@ -42,7 +42,11 @@ namespace CheckupAddIn.Models
         /// </summary>
         public IReadOnlyList<string> AllowedValues { get; }
 
-        public bool IsSpecialEntry => Key.StartsWith("SPECIAL:LOGIC:", StringComparison.Ordinal);
+        public bool IsSpecialEntry => Key.StartsWith("SPECIAL:LOGIC:", StringComparison.Ordinal)
+                                   || Services.RuleKey.IsRuleKey(Key);
+
+        /// <summary>True for the "Run iLogic Rule" Special Function entry (<c>SPECIAL:RULE:</c>).</summary>
+        public bool IsRuleEntry => Services.RuleKey.IsRuleKey(Key);
 
         public FieldItem(string key, string dropText, string rowLabel,
                          string groupName = "", bool isWritable = false, bool isActionItem = false,

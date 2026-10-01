@@ -473,6 +473,7 @@ namespace CheckupAddIn.ViewModels
                 {
                     if (string.IsNullOrEmpty(f.Key)) continue;
                     if (f.IsActionItem) continue;
+                    if (f.IsRuleEntry) continue;   // Rule Buttons carry no value (T46, D19)
                     _availableTargetFields.Add(f);
                 }
             }

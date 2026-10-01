@@ -23,7 +23,6 @@
     <SolidColorBrush x:Key="CheckupButtonBackground"            Color="#2E3645"/>
     <SolidColorBrush x:Key="CheckupButtonBorder"                Color="#4A5570"/>
     <SolidColorBrush x:Key="CheckupButtonForeground"            Color="#F5F5F5"/>
-    <SolidColorBrush x:Key="CheckupSpecialButtonBackground"     Color="#3D2A14"/>
     <SolidColorBrush x:Key="CheckupDestructiveButtonBackground" Color="#3D1820"/>
     <SolidColorBrush x:Key="CheckupApplyButtonBackground"       Color="#1A3A5C"/>
     <SolidColorBrush x:Key="CheckupCancelButtonBackground"      Color="#3D1820"/>

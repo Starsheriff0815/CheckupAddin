@@ -40,6 +40,9 @@ namespace CheckupAddIn.Views
         // Favoriten zone drag state.
         private PinnedFieldEntry _draggedFavoritenEntry;
 
+        // T48: remembered placement to restore in OnSourceInitialized (null = factory centering).
+        private string _startupPlacement;
+
         public CheckupWindow()
         {
             InitializeComponent();
@@ -58,8 +61,35 @@ namespace CheckupAddIn.Views
             }
             if (UiStateStore.TryLoadFieldSelectorDropdownSize(out _, out double dh))
                 _fieldSelectorDropdownHeight = dh;
+
+            // T48: reopen on the last monitor + position; otherwise CenterScreen (Inventor's monitor).
+            string placement = UiStateStore.LoadWindowPlacement();
+            if (WindowPlacement.IsUsable(placement))
+            {
+                _startupPlacement      = placement;
+                WindowStartupLocation  = WindowStartupLocation.Manual;
+            }
+
+            vm.DialogOwner               = this;
             vm.RequestClose              += () => { try { Close(); } catch { } };
-            vm.RequestResetWindowSize    += () => { Width = 650; Height = 900; };
+            vm.RequestResetWindowSize    += ResetWindowPlacement;
+        }
+
+        protected override void OnSourceInitialized(EventArgs e)
+        {
+            base.OnSourceInitialized(e);
+            if (_startupPlacement != null)
+                WindowPlacement.Apply(this, _startupPlacement, allowMaximized: false);
+            _startupPlacement = null;
+        }
+
+        // Reset (T48 D3): factory size, normal state, centered on the monitor Inventor is on.
+        private void ResetWindowPlacement()
+        {
+            WindowState = WindowState.Normal;
+            Width  = 650;
+            Height = 900;
+            WindowPlacement.CenterOnMonitorOf(this, new System.Windows.Interop.WindowInteropHelper(this).Owner);
         }
 
         private void BtnCatalogBuilder_Click(object sender, RoutedEventArgs e)
@@ -129,18 +159,30 @@ namespace CheckupAddIn.Views
         }
 
         // ══════════════════════════════════════════════
-        //  PRESET RIGHT-CLICK SAVE
+        //  PRESET CONTEXT MENU (T47 — addressed by preset ID via the MenuItem's DataContext)
         // ══════════════════════════════════════════════
+
+        private static PresetButtonVm PresetOf(object sender) =>
+            (sender as FrameworkElement)?.DataContext as PresetButtonVm;
 
         private void SavePreset_Click(object sender, RoutedEventArgs e)
         {
-            if (_vm == null) return;
-            if (sender is not MenuItem mi) return;
-            if (!int.TryParse(mi.Tag?.ToString(), out int idx)) return;
+            if (_vm == null || PresetOf(sender) is not PresetButtonVm preset) return;
 
-            var dlg = new InputDialog(_vm.GetPresetName(idx)) { Owner = this };
+            var dlg = new InputDialog(_vm.GetPresetName(preset.Id)) { Owner = this };
             if (dlg.ShowDialog() == true && !string.IsNullOrWhiteSpace(dlg.InputText))
-                _vm.SavePreset(idx, dlg.InputText);
+                _vm.SavePreset(preset.Id, dlg.InputText);
+        }
+
+        private void DeletePreset_Click(object sender, RoutedEventArgs e)
+        {
+            if (_vm == null || PresetOf(sender) is not PresetButtonVm preset || !preset.CanDelete) return;
+
+            var dlg = new InfoDialog(
+                string.Format(LanguageLoader.Get("Dlg_DeletePreset_Body"), preset.Name),
+                "DeletePreset", "Dlg_DeletePreset_Title", 420, 200, showCancel: true) { Owner = this };
+            if (dlg.ShowDialog() == true)
+                _vm.DeletePreset(preset.Id);
         }
 
         // ══════════════════════════════════════════════
@@ -258,45 +300,6 @@ namespace CheckupAddIn.Views
                 Dispatcher.BeginInvoke(
                     new Action(() => { if (tb.IsVisible) { tb.CaretIndex = Math.Min(newCaret, tb.Text.Length); tb.Focus(); } }),
                     System.Windows.Threading.DispatcherPriority.Render);
-        }
-
-        private void ValueCombo_PreviewKeyDown(object sender, KeyEventArgs e)
-        {
-            var cb  = sender as ComboBox;
-            var row = cb?.DataContext as RowModel;
-            if (row == null) return;
-
-            if (e.Key == Key.Enter)
-            {
-                if (cb.IsDropDownOpen)
-                {
-                    cb.IsDropDownOpen = false;
-                    e.Handled = true;
-                }
-                else if (row.HasValueChanged && row.IsEditValueValid)
-                {
-                    _vm?.ApplyFieldEditCommand.Execute(row);
-                    e.Handled = true;
-                }
-                else if (!row.HasValueChanged)
-                {
-                    _vm?.CancelFieldEditCommand.Execute(row);
-                    e.Handled = true;
-                }
-            }
-            else if (e.Key == Key.Escape)
-            {
-                if (cb.IsDropDownOpen)
-                {
-                    cb.IsDropDownOpen = false;
-                    e.Handled = true;
-                }
-                else if (row.IsInlineEditing)
-                {
-                    _vm?.CancelFieldEditCommand.Execute(row);
-                    e.Handled = true;
-                }
-            }
         }
 
         // ══════════════════════════════════════════════
@@ -509,12 +512,6 @@ namespace CheckupAddIn.Views
                 if (row.IsLogicPopupOpen) { row.IsLogicPopupOpen = false; RestoreFocusToLogicTextBox(row); e.Handled = true; }
                 else if (row.IsInlineEditing) { _vm?.CancelFieldEditCommand.Execute(row); e.Handled = true; }
             }
-        }
-
-        private void LogicSearchTextBox_PreviewKeyDown(object sender, KeyEventArgs e)
-        {
-            // Same key handling as the Dropdown variant.
-            LogicDropdownTextBox_PreviewKeyDown(sender, e);
         }
 
         private void LogicSearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -731,7 +728,7 @@ namespace CheckupAddIn.Views
                 try
                 {
                     Clipboard.SetText(text);
-                    if (_vm != null) _vm.StatusMessage = $"Copied: {text}";
+                    if (_vm != null) _vm.StatusMessage = string.Format(LanguageLoader.Get("Msg_Copied"), text);
                 }
                 catch { }
             }
@@ -802,9 +799,185 @@ namespace CheckupAddIn.Views
         }
 
         // ══════════════════════════════════════════════
-        //  WINDOW MIN-WIDTH — lock to bottom-bar content so preset buttons never overlap.
+        //  PRESET BAR — drag-and-drop reorder + More dropdown (T47, TDD §10.5 D8/D9)
+        //  One set of handlers serves the Preset Buttons in the bar (horizontal) and the entries of the
+        //  More dropdown (vertical, Tag="V"). The list logic lives in the ViewModel (MovePreset).
+        // ══════════════════════════════════════════════
+
+        private const string PresetDragFormat = "CheckupPreset";
+        private Point _presetDragStart;
+        private bool  _presetDragArmed;
+        private bool  _presetDroppedInDropdown;
+        private bool  _presetMoreWasOpen;
+
+        private static bool IsDropdownItem(object sender) => (sender as FrameworkElement)?.Tag as string == "V";
+
+        private void PresetItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            _presetDragStart = e.GetPosition(this);
+            _presetDragArmed = true;
+        }
+
+        private void PresetItem_PreviewMouseMove(object sender, MouseEventArgs e)
+        {
+            if (e.LeftButton != MouseButtonState.Pressed) { _presetDragArmed = false; return; }
+            if (_vm == null || !_presetDragArmed) return;
+            if (PresetOf(sender) is not PresetButtonVm preset || sender is not FrameworkElement source) return;
+
+            // Only past the system drag threshold — a plain click still switches presets.
+            var delta = e.GetPosition(this) - _presetDragStart;
+            if (Math.Abs(delta.X) < SystemParameters.MinimumHorizontalDragDistance &&
+                Math.Abs(delta.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+
+            _presetDragArmed = false;
+            bool fromDropdown = IsDropdownItem(sender);
+            _presetDroppedInDropdown = false;
+
+            // A Button holds mouse capture while pressed; releasing it cancels the pending Click so the
+            // drop does not also switch presets. The dropdown must stay open while dragging out of it.
+            if (source.IsMouseCaptured) source.ReleaseMouseCapture();
+            if (fromDropdown) PresetMorePopup.StaysOpen = true;
+
+            preset.IsDragging = true;
+            try
+            {
+                DragDrop.DoDragDrop(source, new DataObject(PresetDragFormat, preset.Id), DragDropEffects.Move);
+            }
+            finally
+            {
+                preset.IsDragging = false;
+                ClearPresetDropMarkers();
+                PresetMoreBtn.Tag = null;
+                if (fromDropdown)
+                {
+                    // Re-arm light-dismiss. A drop inside the dropdown keeps it open (reopened so the popup
+                    // captures the mouse again); any other drop closes it.
+                    PresetMorePopup.StaysOpen = false;
+                    PresetMorePopup.IsOpen    = false;
+                    if (_presetDroppedInDropdown && _vm?.PresetButtons.Any(b => b.IsOverflow) == true)
+                        Dispatcher.BeginInvoke(new Action(() => PresetMorePopup.IsOpen = true), DispatcherPriority.Input);
+                }
+            }
+            e.Handled = true;
+        }
+
+        private void ClearPresetDropMarkers()
+        {
+            if (_vm == null) return;
+            foreach (var b in _vm.PresetButtons) b.DropMarker = PresetDropMarker.None;
+        }
+
+        // Before = left half (bar) / top half (dropdown); After = the other half.
+        private static bool IsDropBefore(FrameworkElement target, DragEventArgs e)
+        {
+            var pos = e.GetPosition(target);
+            return IsDropdownItem(target) ? pos.Y < target.ActualHeight / 2 : pos.X < target.ActualWidth / 2;
+        }
+
+        private void PresetItem_DragOver(object sender, DragEventArgs e)
+        {
+            e.Handled = true;
+            if (!e.Data.GetDataPresent(PresetDragFormat) || PresetOf(sender) is not PresetButtonVm target
+                || sender is not FrameworkElement fe)
+            {
+                e.Effects = DragDropEffects.None;
+                return;
+            }
+            string sourceId = e.Data.GetData(PresetDragFormat) as string;
+            var marker = target.Id == sourceId ? PresetDropMarker.None
+                       : IsDropBefore(fe, e) ? PresetDropMarker.Before : PresetDropMarker.After;
+            if (_vm != null)
+                foreach (var b in _vm.PresetButtons)
+                    if (b != target) b.DropMarker = PresetDropMarker.None;
+            target.DropMarker = marker;
+            e.Effects = DragDropEffects.Move;
+        }
+
+        private void PresetItem_DragLeave(object sender, DragEventArgs e)
+        {
+            if (PresetOf(sender) is PresetButtonVm target) target.DropMarker = PresetDropMarker.None;
+            e.Handled = true;
+        }
+
+        private void PresetItem_Drop(object sender, DragEventArgs e)
+        {
+            e.Handled = true;
+            if (_vm == null || !e.Data.GetDataPresent(PresetDragFormat)) return;
+            if (PresetOf(sender) is not PresetButtonVm target || sender is not FrameworkElement fe) return;
+            string sourceId = e.Data.GetData(PresetDragFormat) as string;
+            ClearPresetDropMarkers();
+            if (string.IsNullOrEmpty(sourceId) || sourceId == target.Id) return;
+
+            _presetDroppedInDropdown = IsDropdownItem(sender);
+            int targetIdx = _vm.GetPresetIndex(target.Id);
+            if (targetIdx < 0) return;
+            _vm.MovePreset(sourceId, IsDropBefore(fe, e) ? targetIdx : targetIdx + 1);
+        }
+
+        // ── More Button (D8) ──
+
+        private void PresetMore_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+            // Light-dismiss closes the popup on this very mouse-down; remember it so Click does not reopen it.
+            => _presetMoreWasOpen = PresetMorePopup.IsOpen;
+
+        private void PresetMore_Click(object sender, RoutedEventArgs e)
+        {
+            if (_presetMoreWasOpen) { _presetMoreWasOpen = false; return; }
+            PresetMorePopup.IsOpen = true;
+        }
+
+        private void PresetMoreItem_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (PresetOf(sender) is not PresetButtonVm preset) return;
+            PresetMorePopup.IsOpen = false;
+            if (_vm?.SwitchPresetCommand.CanExecute(preset) == true)
+                _vm.SwitchPresetCommand.Execute(preset);
+            e.Handled = true;
+        }
+
+        // Right-click on the More Button opens the ACTIVE preset's context menu — only while it is hidden.
+        private void PresetMore_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+        {
+            if (_vm == null || !_vm.IsActivePresetHidden || PresetMoreBtn.ContextMenu == null)
+            {
+                e.Handled = true;
+                return;
+            }
+            PresetMoreBtn.ContextMenu.DataContext = _vm.ActivePresetButton;
+        }
+
+        // Drop onto the More Button moves the preset to the end of the list (D9 B).
+        private void PresetMore_DragOver(object sender, DragEventArgs e)
+        {
+            e.Handled = true;
+            if (!e.Data.GetDataPresent(PresetDragFormat)) { e.Effects = DragDropEffects.None; return; }
+            ClearPresetDropMarkers();
+            PresetMoreBtn.Tag = "drop";
+            e.Effects = DragDropEffects.Move;
+        }
+
+        private void PresetMore_DragLeave(object sender, DragEventArgs e)
+        {
+            PresetMoreBtn.Tag = null;
+            e.Handled = true;
+        }
+
+        private void PresetMore_Drop(object sender, DragEventArgs e)
+        {
+            e.Handled = true;
+            PresetMoreBtn.Tag = null;
+            if (_vm == null || !e.Data.GetDataPresent(PresetDragFormat)) return;
+            if (e.Data.GetData(PresetDragFormat) is string sourceId && sourceId.Length > 0)
+                _vm.MovePresetToEnd(sourceId);
+        }
+
+        // ══════════════════════════════════════════════
+        //  WINDOW MIN-WIDTH — lock to bottom-bar content so the Preset Bar never overlaps the right group.
         //  Called each time the bottom bar re-measures (language changes, first render, etc.).
         // ══════════════════════════════════════════════
+
+        // Width reserved for one Preset Button / the More Button: MaxWidth 120 + BarBtn margin 2 × 3 (T47).
+        private const double PresetSlotWidth = 126;
 
         private void BottomBar_SizeChanged(object sender, SizeChangedEventArgs e)
         {
@@ -813,8 +986,10 @@ namespace CheckupAddIn.Views
             // That TextBlock is NoWrap + ellipsis, so its natural (untruncated) width balloons when
             // multiple objects are selected. Measuring the whole bar would ratchet MinWidth up to
             // that text width and never release it, locking the window from shrinking until reopened.
-            BottomButtonsRow.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            double needed = BottomButtonsRow.DesiredSize.Width + 24
+            // T47: everything beyond one Preset Button goes into the More dropdown, so the minimum is
+            // one preset slot + More slot + "+" (30 + 2 × 3) + Preset Bar margins + right group.
+            BottomRightGroup.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            double needed = 2 * PresetSlotWidth + 36 + 10 + BottomRightGroup.DesiredSize.Width + 24
                 + System.Windows.SystemParameters.ResizeFrameVerticalBorderWidth * 2;
             if (needed > MinWidth)
                 MinWidth = needed;
@@ -945,6 +1120,42 @@ namespace CheckupAddIn.Views
             _fieldSelectorPopupBorder.Height = Math.Max(80, newH);
         }
 
+        // ══════════════════════════════════════════════
+        //  RULE BUTTON + RULE SELECTOR (T46 — Run iLogic Rule)
+        //  Left-click runs via RunRuleCommand (XAML binding); these handlers only route the
+        //  right-click / popup gestures to the ViewModel, like the Field Selector above.
+        // ══════════════════════════════════════════════
+
+        private void RuleButton_RightClick(object sender, MouseButtonEventArgs e)
+        {
+            if ((sender as FrameworkElement)?.DataContext is RowModel row)
+                _vm?.OpenRuleSelector(row);
+            e.Handled = true;
+        }
+
+        private void RuleSelectorPopup_Opened(object sender, EventArgs e)
+        {
+            if (sender is not Popup popup) return;
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() =>
+                FindVisualChild<System.Windows.Controls.TextBox>(popup.Child)?.Focus()));
+        }
+
+        private void RuleSelectorItem_Click(object sender, RoutedEventArgs e)
+        {
+            if (_vm == null) return;
+            if ((sender as FrameworkElement)?.DataContext is not RuleSelectorItem item) return;
+            var row = _vm.Rows.FirstOrDefault(r => r.IsRuleSelectorOpen);
+            _vm.AssignRule(row, item);
+        }
+
+        private void RuleSelectorSearchBox_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.Escape) return;
+            // Popup has its own HwndSource — the window-level ESC handler never sees this key.
+            var row = _vm?.Rows.FirstOrDefault(r => r.IsRuleSelectorOpen);
+            if (row != null) { row.IsRuleSelectorOpen = false; e.Handled = true; }
+        }
+
         private static T FindVisualChild<T>(System.Windows.DependencyObject parent)
             where T : System.Windows.DependencyObject
         {
@@ -1002,6 +1213,8 @@ namespace CheckupAddIn.Views
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
         {
             UiStateStore.SaveWindowSize(Width, Height);
+            UiStateStore.SaveWindowPlacement(WindowPlacement.Capture(this, allowMaximized: false));
+            if (_vm != null) _vm.DialogOwner = null;
             _vm?.UnsubscribeFromInventorEvents();
             DataContext = null;
             _vm = null;
@@ -1014,15 +1227,14 @@ namespace CheckupAddIn.Views
 
         private void ExportPreset_Click(object sender, RoutedEventArgs e)
         {
-            if (_vm == null) return;
-            if (sender is not MenuItem mi || !int.TryParse(mi.Tag?.ToString(), out int idx)) return;
+            if (_vm == null || PresetOf(sender) is not PresetButtonVm preset) return;
             var dlg = new SaveFileDialog
             {
                 Filter     = "JSON files (*.json)|*.json|All files (*.*)|*.*",
                 DefaultExt = ".json"
             };
             if (dlg.ShowDialog() == true)
-                _vm.ExportPreset(idx, dlg.FileName);
+                _vm.ExportPreset(preset.Id, dlg.FileName);
         }
 
         private void ExportAllPresets_Click(object sender, RoutedEventArgs e)
@@ -1039,8 +1251,8 @@ namespace CheckupAddIn.Views
 
         private void ImportPreset_Click(object sender, RoutedEventArgs e)
         {
-            if (_vm == null) return;
-            if (sender is not MenuItem mi || !int.TryParse(mi.Tag?.ToString(), out int idx)) return;
+            if (_vm == null || PresetOf(sender) is not PresetButtonVm preset) return;
+            string targetId = preset.Id;
             var dlg = new OpenFileDialog
             {
                 Filter     = "JSON files (*.json)|*.json|All files (*.*)|*.*",
@@ -1051,9 +1263,55 @@ namespace CheckupAddIn.Views
             var library = _vm.ReadLibraryPresets(dlg.FileName);
             if (library == null) return;
 
-            var picker = new PresetPickerDialog(library) { Owner = this };
-            if (picker.ShowDialog() == true && picker.SelectedPreset != null)
-                _vm.ImportPresetIntoSlot(idx, picker.SelectedPreset);
+            var picker = new PresetPickerDialog(library, _vm.Presets) { Owner = this };
+            if (picker.ShowDialog() != true || picker.SelectedPresets.Count == 0) return;
+
+            if (picker.Mode == PresetPickerDialog.PickerMode.Replace)
+            {
+                _vm.ImportPresetInto(targetId, picker.SelectedPreset);
+                return;
+            }
+            ImportPresetsAsNew(picker.SelectedPresets);
+        }
+
+        // D15: every ticked entry whose ID or name already exists is asked about (Overwrite / Add as new /
+        // Cancel = abort all); "apply to all" answers the remaining conflicts. The ViewModel applies it
+        // all-or-nothing and refuses when the 12-preset limit would be exceeded.
+        private void ImportPresetsAsNew(IReadOnlyList<PresetData> selected)
+        {
+            var existing  = _vm.Presets;
+            var conflicts = selected.Select(p => PresetsManager.FindImportConflict(existing, p)).ToList();
+            int remaining = conflicts.Count(i => i >= 0);
+            PresetConflictDialog.ConflictChoice? forAll = null;
+
+            var items = new List<(PresetData Data, string OverwriteTargetId)>();
+            for (int n = 0; n < selected.Count; n++)
+            {
+                if (conflicts[n] < 0)
+                {
+                    items.Add((selected[n], null));
+                    continue;
+                }
+                var choice = forAll;
+                if (choice == null)
+                {
+                    var dlg = new PresetConflictDialog(selected[n].Name, moreConflictsFollow: remaining > 1) { Owner = this };
+                    dlg.ShowDialog();
+                    choice = dlg.Choice;
+                    if (choice == PresetConflictDialog.ConflictChoice.Cancel) return;
+                    if (dlg.ApplyToAll) forAll = choice;
+                }
+                remaining--;
+                items.Add((selected[n], choice == PresetConflictDialog.ConflictChoice.Overwrite ? existing[conflicts[n]].Id : null));
+            }
+
+            if (!_vm.ImportPresetsAsNew(items))
+            {
+                new InfoDialog(
+                    string.Format(LanguageLoader.Get("Dlg_PresetLimit_Body"),
+                                  Math.Max(0, PresetsManager.MaxPresets - existing.Count)),
+                    "PresetLimit", "Dlg_PresetLimit_Title", 420, 200) { Owner = this }.ShowDialog();
+            }
         }
     }
 }

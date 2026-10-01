@@ -38,8 +38,10 @@
     <Compile Include="$(MSBuildThisFileDirectory)Models\LogicDropdownColumn.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\LogicDropdownItemRow.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\PinnedFieldEntry.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\PresetButtonVm.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\PresetData.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\RowModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\RuleSelectorGroupVm.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\SpeziAutoCompleteItem.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\SpeziSegment.cs" />
 
@@ -57,9 +59,11 @@
     <Compile Include="$(MSBuildThisFileDirectory)Services\PerfLogger.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\PresetsManager.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\PropertyReader.cs" />
-    <Compile Include="$(MSBuildThisFileDirectory)Services\StylePurger.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\ILogicRuleService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\RuleKey.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\ThemeLoader.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\UiStateStore.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\WindowPlacement.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\UserSettings.cs" />
 
     <!-- ViewModels -->
@@ -111,6 +115,17 @@
     </Page>
     <Compile Include="$(MSBuildThisFileDirectory)Views\InputDialog.xaml.cs">
       <DependentUpon>InputDialog.xaml</DependentUpon>
+    </Compile>
+
+    <Compile Include="$(MSBuildThisFileDirectory)Views\PresetBarPanels.cs" />
+
+    <Page Include="$(MSBuildThisFileDirectory)Views\PresetConflictDialog.xaml">
+      <Link>Views\PresetConflictDialog.xaml</Link>
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Compile Include="$(MSBuildThisFileDirectory)Views\PresetConflictDialog.xaml.cs">
+      <DependentUpon>PresetConflictDialog.xaml</DependentUpon>
     </Compile>
 
     <Page Include="$(MSBuildThisFileDirectory)Views\PresetPickerDialog.xaml">

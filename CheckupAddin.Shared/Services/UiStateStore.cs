@@ -5,7 +5,7 @@ using Microsoft.Win32;
 namespace CheckupAddIn.Services
 {
     /// <summary>
-    /// Persists non-preset UI state (window size, active preset index) to the Windows Registry.
+    /// Persists non-preset UI state (window size, active preset ID) to the Windows Registry.
     /// All reads and writes are silent — missing values fall back to defaults.
     /// Uses HKCU only; no elevation required.
     /// </summary>
@@ -21,17 +21,32 @@ namespace CheckupAddIn.Services
         /// </summary>
         public static bool DesignMode { get; set; }
 
-        public static void SaveActivePresetIndex(int index)
+        // Active preset is remembered by its stable ID (T47, TDD §10.5 D10). The pre-T47 DWORD
+        // "ActivePresetIndex" is read once for migration and then deleted.
+        public static void SaveActivePresetId(string id)
         {
             try
             {
                 using (var key = Registry.CurrentUser.CreateSubKey(RegKey))
-                    key?.SetValue("ActivePresetIndex", index, RegistryValueKind.DWord);
+                    key?.SetValue("ActivePresetId", id ?? "", RegistryValueKind.String);
             }
             catch { }
         }
 
-        public static int LoadActivePresetIndex()
+        /// <summary>Returns the stored active preset ID, or null when none is stored.</summary>
+        public static string LoadActivePresetId()
+        {
+            try
+            {
+                using (var key = Registry.CurrentUser.OpenSubKey(RegKey))
+                    if (key?.GetValue("ActivePresetId") is string s && s.Length > 0) return s;
+            }
+            catch { }
+            return null;
+        }
+
+        /// <summary>Pre-T47 active slot (0–2), or -1 when not present.</summary>
+        public static int LoadLegacyActivePresetIndex()
         {
             try
             {
@@ -42,7 +57,17 @@ namespace CheckupAddIn.Services
                 }
             }
             catch { }
-            return 0;
+            return -1;
+        }
+
+        public static void DeleteLegacyActivePresetIndex()
+        {
+            try
+            {
+                using (var key = Registry.CurrentUser.OpenSubKey(RegKey, writable: true))
+                    key?.DeleteValue("ActivePresetIndex", throwOnMissingValue: false);
+            }
+            catch { }
         }
 
         public static void SaveWindowSize(double width, double height)
@@ -83,22 +108,59 @@ namespace CheckupAddIn.Services
             return false;
         }
 
+        // ── Window placement (T48) — monitor + position + size, "l,t,r,b,max" from WindowPlacement ──
+
+        public static void SaveWindowPlacement(string placement)         => SavePlacement("WindowPlacement", placement);
+        public static string LoadWindowPlacement()                        => LoadPlacement("WindowPlacement");
+        public static void SaveCatalogBuilderPlacement(string placement) => SavePlacement("CatalogBuilderPlacement", placement);
+        public static string LoadCatalogBuilderPlacement()                => LoadPlacement("CatalogBuilderPlacement");
+
+        private static void SavePlacement(string name, string placement)
+        {
+            if (string.IsNullOrEmpty(placement)) return;
+            try
+            {
+                using (var key = Registry.CurrentUser.CreateSubKey(RegKey))
+                    key?.SetValue(name, placement, RegistryValueKind.String);
+            }
+            catch { }
+        }
+
+        private static string LoadPlacement(string name)
+        {
+            if (DesignMode) return null;
+            try
+            {
+                using (var key = Registry.CurrentUser.OpenSubKey(RegKey))
+                    return key?.GetValue(name) as string;
+            }
+            catch { return null; }
+        }
+
+        // Reset (T48 D1): every remembered window/dialog/dropdown size and both placements, matched by
+        // value-name prefix so dialogs added later are covered too. Non-size state (CatalogPickerTab_*,
+        // collapsed panels, pinned fields, …) is deliberately NOT matched.
+        internal static bool IsWindowSizeValueName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            return name.StartsWith("Window",             StringComparison.Ordinal)   // WindowWidth/Height/Placement
+                || name.StartsWith("FieldSelectorPopup", StringComparison.Ordinal)
+                || name.StartsWith("InfoDialog_",        StringComparison.Ordinal)   // every InfoDialog / PresetPicker / PresetConflict
+                || name.StartsWith("LogicDropdown_",     StringComparison.Ordinal)   // row dropdown height + column widths
+                || name == "CatalogBuilderWidth" || name == "CatalogBuilderHeight" || name == "CatalogBuilderPlacement"
+                || name == "CatalogPickerWidth"  || name == "CatalogPickerHeight";
+        }
+
         public static void ClearWindowSizes()
         {
             try
             {
                 using (var key = Registry.CurrentUser.CreateSubKey(RegKey))
                 {
-                    key?.DeleteValue("WindowWidth",            false);
-                    key?.DeleteValue("WindowHeight",           false);
-                    key?.DeleteValue("FieldSelectorPopupWidth",   false);
-                    key?.DeleteValue("FieldSelectorPopupHeight",  false);
-                    key?.DeleteValue("CatalogBuilderWidth",        false);
-                    key?.DeleteValue("CatalogBuilderHeight",       false);
-                    key?.DeleteValue("InfoDialog_MainAddin_Width",      false);
-                    key?.DeleteValue("InfoDialog_MainAddin_Height",     false);
-                    key?.DeleteValue("InfoDialog_LogicBuilder_Width",   false);
-                    key?.DeleteValue("InfoDialog_LogicBuilder_Height",  false);
+                    if (key != null)
+                        foreach (var name in key.GetValueNames())
+                            if (IsWindowSizeValueName(name))
+                                key.DeleteValue(name, false);
                 }
                 // Reset column widths back to auto (Star) for all catalogs
                 Registry.CurrentUser.DeleteSubKeyTree(ColWidthsKey, throwOnMissingSubKey: false);

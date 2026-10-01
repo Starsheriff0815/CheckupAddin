@@ -6,6 +6,8 @@
         xmlns:vm="clr-namespace:CheckupAddIn.ViewModels"
         xmlns:conv="clr-namespace:CheckupAddIn.Converters"
         xmlns:helpers="clr-namespace:CheckupAddIn.Helpers"
+        xmlns:views="clr-namespace:CheckupAddIn.Views"
+        xmlns:models="clr-namespace:CheckupAddIn.Models"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance Type=vm:CheckupViewModel, IsDesignTimeCreatable=True}"
         Title="{DynamicResource Win_Title_Checkup}"
@@ -521,6 +523,20 @@
             </Setter>
         </Style>
 
+        <!-- Preset context menu (T47, TDD §10.5 D7) — one instance per Preset Button (x:Shared=False).
+             DataContext = the PresetButtonVm (inherited from the button; set explicitly for the More Button). -->
+        <ContextMenu x:Key="PresetContextMenu" x:Shared="False">
+            <MenuItem Header="{DynamicResource Menu_SavePreset}"       Click="SavePreset_Click"/>
+            <Separator/>
+            <MenuItem Header="{DynamicResource Menu_ExportPreset}"     Click="ExportPreset_Click"/>
+            <MenuItem Header="{DynamicResource Menu_ExportAllPresets}" Click="ExportAllPresets_Click"/>
+            <Separator/>
+            <MenuItem Header="{DynamicResource Menu_ImportPreset}"     Click="ImportPreset_Click"/>
+            <Separator/>
+            <MenuItem Header="{DynamicResource Menu_DeletePreset}"     Click="DeletePreset_Click"
+                      IsEnabled="{Binding CanDelete}"/>
+        </ContextMenu>
+
         <!-- Cursor hint + theme-aware foreground on value TextBlock -->
         <Style x:Key="ValueTextBlockStyle" TargetType="TextBlock">
             <Setter Property="Cursor"     Value="Arrow"/>
@@ -568,17 +584,16 @@
             <TextBlock Grid.Column="1" Text="{DynamicResource Lbl_File}" FontWeight="Bold"
                        Foreground="{DynamicResource CheckupLabelText}"
                        Margin="4,0,8,0" VerticalAlignment="Center"/>
+            <!-- Col 2: Document Name Field. Only the Col 0 button cycles the view mode (T45);
+                 right-click copies the shown text, same handler + full-width hit area as the Value Field. -->
             <TextBlock Grid.Column="2" Text="{Binding FileName}" FontWeight="Bold"
+                       Background="Transparent"
                        VerticalAlignment="Center"
                        TextWrapping="Wrap"
                        MaxHeight="{Binding FileNameMaxHeight}"
                        TextTrimming="CharacterEllipsis"
-                       ToolTip="{Binding FileName}">
-                <TextBlock.InputBindings>
-                    <MouseBinding Gesture="LeftClick"
-                                  Command="{Binding CycleFileNameViewModeCommand}"/>
-                </TextBlock.InputBindings>
-            </TextBlock>
+                       ToolTip="{Binding FileName}"
+                       MouseRightButtonUp="Value_RightClick"/>
             <Button Grid.Column="3" Style="{StaticResource BarBtn}"
                     Content="{DynamicResource Btn_CatalogBuilder}"
                     ToolTip="{DynamicResource Tip_CatalogBuilder}"
@@ -601,16 +616,18 @@
             <Separator DockPanel.Dock="Top" Margin="0,0,0,6"
                        Background="{DynamicResource CheckupSeparator}"/>
 
-            <DockPanel x:Name="BottomButtonsRow" LastChildFill="True">
-
-                <!-- Left: Purge Styles -->
-                <Button DockPanel.Dock="Left" Style="{StaticResource BarBtn}"
-                        Content="{DynamicResource Btn_PurgeStyles}"
-                        Background="{DynamicResource CheckupSpecialButtonBackground}"
-                        Command="{Binding PurgeStylesCommand}"/>
+            <!-- Preset Bar (T47, TDD §10.5) on the left — its left edge lines up with the Row Drag Handles and
+                 the View Mode Cycle button (BarBtn margin 3 + 4 = 7 px, see the header row). Info / Reset / Close
+                 stay on the right. BottomBar_SizeChanged keeps MinWidth ≥ one preset + More + "+" + right group. -->
+            <Grid x:Name="BottomButtonsRow">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
 
                 <!-- Right: Info / Reset / Close -->
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <StackPanel x:Name="BottomRightGroup" Grid.Column="1"
+                            Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button Style="{StaticResource BarBtn}" Content="{DynamicResource Btn_Info}"
                             Background="{DynamicResource CheckupButtonBackground}"
                             Command="{Binding InfoCommand}"
@@ -623,128 +640,214 @@
                             Command="{Binding CloseCommand}"/>
                 </StackPanel>
 
-                <!-- Center: Preset buttons (right-click to save) -->
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                    <Button x:Name="BtnPreset1" Style="{StaticResource BarBtn}"
-                            Command="{Binding Preset1Command}">
-                        <Button.Template>
-                            <ControlTemplate TargetType="Button">
-                                <Border x:Name="border"
-                                        BorderThickness="1" BorderBrush="Transparent"
-                                        Background="{DynamicResource CheckupWindowBackground}"
-                                        Padding="10,2" SnapsToDevicePixels="True">
-                                    <TextBlock Text="{Binding Preset1Name}"
-                                               HorizontalAlignment="Center" VerticalAlignment="Center"
-                                               Foreground="{DynamicResource CheckupButtonForeground}"
-                                               FontSize="11"/>
-                                </Border>
-                                <ControlTemplate.Triggers>
-                                    <DataTrigger Binding="{Binding IsPreset1Active}" Value="True">
-                                        <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource CheckupPresetActiveBorder}"/>
-                                        <Setter TargetName="border" Property="Background"  Value="{DynamicResource CheckupPresetActiveBackground}"/>
-                                    </DataTrigger>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="border" Property="Opacity" Value="0.8"/>
-                                    </Trigger>
-                                    <Trigger Property="IsPressed" Value="True">
-                                        <Setter TargetName="border" Property="Opacity" Value="0.6"/>
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Button.Template>
-                        <Button.ContextMenu>
-                            <ContextMenu>
-                                <MenuItem Header="{DynamicResource Menu_SavePreset}"
-                                          Tag="0" Click="SavePreset_Click"/>
-                                <Separator/>
-                                <MenuItem Header="{DynamicResource Menu_ExportPreset}"    Tag="0" Click="ExportPreset_Click"/>
-                                <MenuItem Header="{DynamicResource Menu_ExportAllPresets}" Click="ExportAllPresets_Click"/>
-                                <Separator/>
-                                <MenuItem Header="{DynamicResource Menu_ImportPreset}"    Tag="0" Click="ImportPreset_Click"/>
-                            </ContextMenu>
-                        </Button.ContextMenu>
-                    </Button>
-                    <Button x:Name="BtnPreset2" Style="{StaticResource BarBtn}"
-                            Command="{Binding Preset2Command}">
-                        <Button.Template>
-                            <ControlTemplate TargetType="Button">
-                                <Border x:Name="border"
-                                        BorderThickness="1" BorderBrush="Transparent"
-                                        Background="{DynamicResource CheckupWindowBackground}"
-                                        Padding="10,2" SnapsToDevicePixels="True">
-                                    <TextBlock Text="{Binding Preset2Name}"
-                                               HorizontalAlignment="Center" VerticalAlignment="Center"
-                                               Foreground="{DynamicResource CheckupButtonForeground}"
-                                               FontSize="11"/>
-                                </Border>
-                                <ControlTemplate.Triggers>
-                                    <DataTrigger Binding="{Binding IsPreset2Active}" Value="True">
-                                        <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource CheckupPresetActiveBorder}"/>
-                                        <Setter TargetName="border" Property="Background"  Value="{DynamicResource CheckupPresetActiveBackground}"/>
-                                    </DataTrigger>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="border" Property="Opacity" Value="0.8"/>
-                                    </Trigger>
-                                    <Trigger Property="IsPressed" Value="True">
-                                        <Setter TargetName="border" Property="Opacity" Value="0.6"/>
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Button.Template>
-                        <Button.ContextMenu>
-                            <ContextMenu>
-                                <MenuItem Header="{DynamicResource Menu_SavePreset}"
-                                          Tag="1" Click="SavePreset_Click"/>
-                                <Separator/>
-                                <MenuItem Header="{DynamicResource Menu_ExportPreset}"    Tag="1" Click="ExportPreset_Click"/>
-                                <MenuItem Header="{DynamicResource Menu_ExportAllPresets}" Click="ExportAllPresets_Click"/>
-                                <Separator/>
-                                <MenuItem Header="{DynamicResource Menu_ImportPreset}"    Tag="1" Click="ImportPreset_Click"/>
-                            </ContextMenu>
-                        </Button.ContextMenu>
-                    </Button>
-                    <Button x:Name="BtnPreset3" Style="{StaticResource BarBtn}"
-                            Command="{Binding Preset3Command}">
-                        <Button.Template>
-                            <ControlTemplate TargetType="Button">
-                                <Border x:Name="border"
-                                        BorderThickness="1" BorderBrush="Transparent"
-                                        Background="{DynamicResource CheckupWindowBackground}"
-                                        Padding="10,2" SnapsToDevicePixels="True">
-                                    <TextBlock Text="{Binding Preset3Name}"
-                                               HorizontalAlignment="Center" VerticalAlignment="Center"
-                                               Foreground="{DynamicResource CheckupButtonForeground}"
-                                               FontSize="11"/>
-                                </Border>
-                                <ControlTemplate.Triggers>
-                                    <DataTrigger Binding="{Binding IsPreset3Active}" Value="True">
-                                        <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource CheckupPresetActiveBorder}"/>
-                                        <Setter TargetName="border" Property="Background"  Value="{DynamicResource CheckupPresetActiveBackground}"/>
-                                    </DataTrigger>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="border" Property="Opacity" Value="0.8"/>
-                                    </Trigger>
-                                    <Trigger Property="IsPressed" Value="True">
-                                        <Setter TargetName="border" Property="Opacity" Value="0.6"/>
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Button.Template>
-                        <Button.ContextMenu>
-                            <ContextMenu>
-                                <MenuItem Header="{DynamicResource Menu_SavePreset}"
-                                          Tag="2" Click="SavePreset_Click"/>
-                                <Separator/>
-                                <MenuItem Header="{DynamicResource Menu_ExportPreset}"    Tag="2" Click="ExportPreset_Click"/>
-                                <MenuItem Header="{DynamicResource Menu_ExportAllPresets}" Click="ExportAllPresets_Click"/>
-                                <Separator/>
-                                <MenuItem Header="{DynamicResource Menu_ImportPreset}"    Tag="2" Click="ImportPreset_Click"/>
-                            </ContextMenu>
-                        </Button.ContextMenu>
-                    </Button>
-                </StackPanel>
+                <!-- Left: Preset Bar = Preset Buttons → More Button (only on overflow) → Add Preset Button "+".
+                     PresetBarPanel expects exactly these three children in this order. -->
+                <views:PresetBarPanel x:Name="PresetBar" Grid.Column="0"
+                                      HorizontalAlignment="Left" Margin="4,0,6,0">
 
-            </DockPanel>
+                    <!-- [0] Preset Buttons. Left-click switches, right-click = context menu, drag = reorder (D9).
+                         PresetOverflowPanel hides what does not fit and flags it IsOverflow (listed under More). -->
+                    <ItemsControl x:Name="PresetItems" ItemsSource="{Binding PresetButtons}" Focusable="False">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <views:PresetOverflowPanel/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type models:PresetButtonVm}">
+                                <Button Style="{StaticResource BarBtn}" MaxWidth="120"
+                                        Command="{Binding DataContext.SwitchPresetCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        CommandParameter="{Binding}"
+                                        ToolTip="{Binding Name}"
+                                        ContextMenu="{StaticResource PresetContextMenu}"
+                                        AllowDrop="True"
+                                        PreviewMouseLeftButtonDown="PresetItem_PreviewMouseLeftButtonDown"
+                                        PreviewMouseMove="PresetItem_PreviewMouseMove"
+                                        DragOver="PresetItem_DragOver"
+                                        DragLeave="PresetItem_DragLeave"
+                                        Drop="PresetItem_Drop">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Grid>
+                                                <Border x:Name="border"
+                                                        BorderThickness="1" BorderBrush="Transparent"
+                                                        Background="{DynamicResource CheckupWindowBackground}"
+                                                        Padding="10,2" SnapsToDevicePixels="True">
+                                                    <TextBlock Text="{Binding Name}"
+                                                               TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource CheckupButtonForeground}"
+                                                               FontSize="11"/>
+                                                </Border>
+                                                <!-- Drag-and-drop insert markers (left = before, right = after) -->
+                                                <Rectangle x:Name="markBefore" Width="2" HorizontalAlignment="Left"
+                                                           Fill="{DynamicResource CheckupDragHighlight}" Visibility="Collapsed"/>
+                                                <Rectangle x:Name="markAfter" Width="2" HorizontalAlignment="Right"
+                                                           Fill="{DynamicResource CheckupDragHighlight}" Visibility="Collapsed"/>
+                                            </Grid>
+                                            <ControlTemplate.Triggers>
+                                                <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                    <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource CheckupPresetActiveBorder}"/>
+                                                    <Setter TargetName="border" Property="Background"  Value="{DynamicResource CheckupPresetActiveBackground}"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding DropMarker}" Value="{x:Static models:PresetDropMarker.Before}">
+                                                    <Setter TargetName="markBefore" Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding DropMarker}" Value="{x:Static models:PresetDropMarker.After}">
+                                                    <Setter TargetName="markAfter" Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="border" Property="Opacity" Value="0.8"/>
+                                                </Trigger>
+                                                <Trigger Property="IsPressed" Value="True">
+                                                    <Setter TargetName="border" Property="Opacity" Value="0.6"/>
+                                                </Trigger>
+                                                <DataTrigger Binding="{Binding IsDragging}" Value="True">
+                                                    <Setter TargetName="border" Property="Opacity" Value="0.5"/>
+                                                </DataTrigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- [1] More Button (D8, PatternFly style). Left-click opens the dropdown of hidden presets.
+                         When the active preset is hidden it shows that preset's name + active visual, and
+                         right-click opens the active preset's context menu. Drop target: move to the end (D9 B). -->
+                    <Button x:Name="PresetMoreBtn" Style="{StaticResource BarBtn}" MaxWidth="120"
+                            ToolTip="{Binding MoreButtonTooltip}"
+                            ContextMenu="{StaticResource PresetContextMenu}"
+                            ContextMenuOpening="PresetMore_ContextMenuOpening"
+                            PreviewMouseLeftButtonDown="PresetMore_PreviewMouseLeftButtonDown"
+                            Click="PresetMore_Click"
+                            AllowDrop="True"
+                            DragOver="PresetMore_DragOver"
+                            DragLeave="PresetMore_DragLeave"
+                            Drop="PresetMore_Drop">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="border"
+                                        BorderThickness="1" BorderBrush="Transparent"
+                                        Background="{DynamicResource CheckupWindowBackground}"
+                                        Padding="10,2" SnapsToDevicePixels="True">
+                                    <TextBlock Text="{Binding MoreButtonLabel}"
+                                               TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource CheckupButtonForeground}"
+                                               FontSize="11"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding IsActivePresetHidden}" Value="True">
+                                        <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource CheckupPresetActiveBorder}"/>
+                                        <Setter TargetName="border" Property="Background"  Value="{DynamicResource CheckupPresetActiveBackground}"/>
+                                    </DataTrigger>
+                                    <!-- Drop target highlight while a Preset Button is dragged over it (Tag set in code-behind) -->
+                                    <Trigger Property="Tag" Value="drop">
+                                        <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource CheckupDragHighlight}"/>
+                                    </Trigger>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="border" Property="Opacity" Value="0.8"/>
+                                    </Trigger>
+                                    <Trigger Property="IsPressed" Value="True">
+                                        <Setter TargetName="border" Property="Opacity" Value="0.6"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+
+                    <!-- [2] Add Preset Button "+" (D4/D5): copies the active preset incl. unsaved Row changes.
+                         Disabled at 12 presets; the tooltip then explains why (ShowOnDisabled). -->
+                    <Button Style="{StaticResource BarBtn}"
+                            Width="30" MinWidth="30" Padding="0" FontSize="14"
+                            Content="+"
+                            Background="{DynamicResource CheckupButtonBackground}"
+                            Command="{Binding AddPresetCommand}"
+                            ToolTip="{Binding AddPresetTooltip}"
+                            ToolTipService.ShowOnDisabled="True"/>
+                </views:PresetBarPanel>
+
+                <!-- More dropdown: the hidden presets in list order. Click = switch; drag onto the Preset Bar =
+                     move there; drag within the list = reorder (D9 A). Stays open while dragging (code-behind). -->
+                <Popup x:Name="PresetMorePopup" Grid.Column="0"
+                       PlacementTarget="{Binding ElementName=PresetMoreBtn}"
+                       Placement="Top"
+                       StaysOpen="False"
+                       AllowsTransparency="True">
+                    <Border MinWidth="{Binding ActualWidth, ElementName=PresetMoreBtn}"
+                            MaxHeight="420"
+                            Background="{DynamicResource CheckupComboItemBackground}"
+                            BorderBrush="{DynamicResource CheckupButtonBorder}"
+                            BorderThickness="1">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" CanContentScroll="False">
+                            <ItemsControl ItemsSource="{Binding PresetButtons}" Focusable="False">
+                                <ItemsControl.ItemContainerStyle>
+                                    <Style TargetType="ContentPresenter">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsOverflow}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ItemsControl.ItemContainerStyle>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type models:PresetButtonVm}">
+                                        <Grid x:Name="itemRoot" Tag="V"
+                                              Background="Transparent"
+                                              Cursor="Hand"
+                                              ToolTip="{Binding Name}"
+                                              AllowDrop="True"
+                                              PreviewMouseLeftButtonDown="PresetItem_PreviewMouseLeftButtonDown"
+                                              PreviewMouseMove="PresetItem_PreviewMouseMove"
+                                              MouseLeftButtonUp="PresetMoreItem_MouseLeftButtonUp"
+                                              DragOver="PresetItem_DragOver"
+                                              DragLeave="PresetItem_DragLeave"
+                                              Drop="PresetItem_Drop">
+                                            <Border x:Name="itemBd"
+                                                    BorderThickness="1" BorderBrush="Transparent"
+                                                    Background="Transparent"
+                                                    Padding="10,4">
+                                                <TextBlock Text="{Binding Name}"
+                                                           MaxWidth="240"
+                                                           TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                                                           Foreground="{DynamicResource CheckupPrimaryText}"
+                                                           FontSize="11"/>
+                                            </Border>
+                                            <!-- Drag-and-drop insert markers (top = before, bottom = after) -->
+                                            <Rectangle x:Name="markBefore" Height="2" VerticalAlignment="Top"
+                                                       Fill="{DynamicResource CheckupDragHighlight}" Visibility="Collapsed"/>
+                                            <Rectangle x:Name="markAfter" Height="2" VerticalAlignment="Bottom"
+                                                       Fill="{DynamicResource CheckupDragHighlight}" Visibility="Collapsed"/>
+                                        </Grid>
+                                        <DataTemplate.Triggers>
+                                            <Trigger SourceName="itemRoot" Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="itemBd" Property="Background" Value="{DynamicResource CheckupComboItemHoverBackground}"/>
+                                            </Trigger>
+                                            <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                <Setter TargetName="itemBd" Property="BorderBrush" Value="{DynamicResource CheckupPresetActiveBorder}"/>
+                                                <Setter TargetName="itemBd" Property="Background"  Value="{DynamicResource CheckupPresetActiveBackground}"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding DropMarker}" Value="{x:Static models:PresetDropMarker.Before}">
+                                                <Setter TargetName="markBefore" Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding DropMarker}" Value="{x:Static models:PresetDropMarker.After}">
+                                                <Setter TargetName="markAfter" Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsDragging}" Value="True">
+                                                <Setter TargetName="itemBd" Property="Opacity" Value="0.5"/>
+                                            </DataTrigger>
+                                        </DataTemplate.Triggers>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Border>
+                </Popup>
+
+            </Grid>
         </DockPanel>
 
         <!-- CENTER: Dynamic rows -->
@@ -850,6 +953,184 @@
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
+
+                                    <!-- Rule Button (T46 — Run iLogic Rule): fills the whole Value Field of a Rule Row.
+                                         Left-click runs the assigned rule; right-click (any state) opens the Rule Selector.
+                                         Single line, never wraps — deliberate exception to the 2-line value auto-flow.
+                                         Styled like the ƒx toggle, but with the Value Field font size. -->
+                                    <Button x:Name="RuleBtn"
+                                            Grid.Column="0" Grid.ColumnSpan="2"
+                                            Command="{Binding DataContext.RunRuleCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}"
+                                            MouseRightButtonUp="RuleButton_RightClick"
+                                            IsEnabled="{Binding IsRuleAvailable}"
+                                            ToolTip="{Binding RuleToolTip}"
+                                            ToolTipService.ShowOnDisabled="True"
+                                            Margin="2,1,2,1" MinHeight="24"
+                                            HorizontalAlignment="Stretch"
+                                            Visibility="{Binding IsRuleButtonVisible, Converter={StaticResource BoolToVis}}">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border x:Name="ruleBd"
+                                                        Background="{DynamicResource CheckupButtonBackground}"
+                                                        BorderBrush="{DynamicResource CheckupButtonBorder}"
+                                                        BorderThickness="1"
+                                                        Padding="6,0">
+                                                    <TextBlock x:Name="ruleTxt"
+                                                               Text="{Binding RuleButtonText}"
+                                                               FontSize="{DynamicResource CheckupBaseFontSize}"
+                                                               Foreground="{DynamicResource CheckupButtonForeground}"
+                                                               TextWrapping="NoWrap"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               HorizontalAlignment="Left"
+                                                               VerticalAlignment="Center"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <!-- Empty: "Right Click to Set iLogic Rule" in red -->
+                                                    <DataTrigger Binding="{Binding IsRuleEmpty}" Value="True">
+                                                        <Setter TargetName="ruleTxt" Property="Foreground" Value="{DynamicResource CheckupErrorText}"/>
+                                                    </DataTrigger>
+                                                    <!-- Missing: greyed + strikethrough, like missing-field rows -->
+                                                    <DataTrigger Binding="{Binding IsRuleMissing}" Value="True">
+                                                        <Setter TargetName="ruleTxt" Property="Foreground" Value="{DynamicResource CheckupSecondaryText}"/>
+                                                        <Setter TargetName="ruleTxt" Property="TextDecorations" Value="Strikethrough"/>
+                                                        <Setter TargetName="ruleTxt" Property="FontStyle" Value="Italic"/>
+                                                    </DataTrigger>
+                                                    <!-- Running: engaged look (same as ƒx pressed) -->
+                                                    <DataTrigger Binding="{Binding IsRuleRunning}" Value="True">
+                                                        <Setter TargetName="ruleBd" Property="Background"  Value="{DynamicResource CheckupPresetActiveBackground}"/>
+                                                        <Setter TargetName="ruleBd" Property="BorderBrush" Value="{DynamicResource CheckupPresetActiveBorder}"/>
+                                                    </DataTrigger>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="ruleBd" Property="Opacity" Value="0.85"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsPressed" Value="True">
+                                                        <Setter TargetName="ruleBd" Property="Opacity" Value="0.6"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsEnabled" Value="False">
+                                                        <Setter TargetName="ruleBd" Property="Opacity" Value="0.5"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                    </Button>
+
+                                    <!-- Rule Selector popup: search box + rules grouped by folder (natural order).
+                                         Document Rules first, then Inventor's External Rule Directories, then "Checkup". -->
+                                    <Popup PlacementTarget="{Binding ElementName=RuleBtn}"
+                                           Placement="Bottom"
+                                           IsOpen="{Binding IsRuleSelectorOpen, Mode=TwoWay}"
+                                           StaysOpen="False"
+                                           AllowsTransparency="True"
+                                           Opened="RuleSelectorPopup_Opened">
+                                        <Border MinWidth="{Binding ActualWidth, ElementName=RuleBtn}"
+                                                MaxHeight="420"
+                                                Background="{DynamicResource CheckupComboItemBackground}"
+                                                BorderBrush="{DynamicResource CheckupButtonBorder}"
+                                                BorderThickness="1">
+                                            <Grid>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>  <!-- Search -->
+                                                    <RowDefinition Height="Auto"/>  <!-- Hint (nothing to list) -->
+                                                    <RowDefinition Height="*"/>     <!-- Groups -->
+                                                </Grid.RowDefinitions>
+
+                                                <TextBox Grid.Row="0"
+                                                         Text="{Binding Data.RuleSelectorFilterText, Source={StaticResource VmProxy}, UpdateSourceTrigger=PropertyChanged}"
+                                                         Margin="4,4,4,2"
+                                                         Padding="4,3"
+                                                         FontSize="11"
+                                                         Height="26"
+                                                         TextWrapping="NoWrap"
+                                                         VerticalAlignment="Top"
+                                                         BorderThickness="1"
+                                                         PreviewKeyDown="RuleSelectorSearchBox_PreviewKeyDown">
+                                                    <TextBox.Style>
+                                                        <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                                                            <Setter Property="Foreground" Value="{DynamicResource CheckupPrimaryText}"/>
+                                                        </Style>
+                                                    </TextBox.Style>
+                                                </TextBox>
+
+                                                <TextBlock Grid.Row="1"
+                                                           Text="{Binding Data.RuleSelectorHint, Source={StaticResource VmProxy}}"
+                                                           FontSize="11" FontStyle="Italic"
+                                                           Foreground="{DynamicResource CheckupSecondaryText}"
+                                                           Margin="8,4,8,6"
+                                                           Visibility="{Binding Data.HasRuleSelectorHint, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVis}}"/>
+
+                                                <ScrollViewer Grid.Row="2"
+                                                              VerticalScrollBarVisibility="Auto"
+                                                              CanContentScroll="False">
+                                                    <ItemsControl ItemsSource="{Binding Data.RuleSelectorGroups, Source={StaticResource VmProxy}}">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <StackPanel>
+                                                                    <Border Background="{DynamicResource CheckupGroupHeaderBackground}">
+                                                                        <TextBlock Text="{Binding GroupDisplayName}"
+                                                                                   FontSize="10" FontWeight="Bold"
+                                                                                   Foreground="{DynamicResource CheckupGroupHeaderForeground}"
+                                                                                   Padding="16,2,6,2"/>
+                                                                    </Border>
+                                                                    <ItemsControl ItemsSource="{Binding FilteredItems}" AlternationCount="2">
+                                                                        <ItemsControl.ItemTemplate>
+                                                                            <DataTemplate>
+                                                                                <Grid>
+                                                                                    <Border x:Name="rowBg" Background="{DynamicResource CheckupRowBackground0}"/>
+                                                                                    <Button Click="RuleSelectorItem_Click"
+                                                                                            IsEnabled="{Binding IsSelectable}"
+                                                                                            ToolTip="{Binding ToolTip}"
+                                                                                            ToolTipService.ShowOnDisabled="True"
+                                                                                            HorizontalContentAlignment="Left"
+                                                                                            Padding="0"
+                                                                                            Cursor="Hand">
+                                                                                        <Button.Template>
+                                                                                            <ControlTemplate TargetType="Button">
+                                                                                                <Border x:Name="bdr" Background="Transparent">
+                                                                                                    <DockPanel LastChildFill="True">
+                                                                                                        <Rectangle DockPanel.Dock="Bottom"
+                                                                                                                   Height="1"
+                                                                                                                   Stroke="{DynamicResource CheckupSeparator}"
+                                                                                                                   StrokeThickness="1"
+                                                                                                                   StrokeDashArray="1 2"
+                                                                                                                   SnapsToDevicePixels="True"/>
+                                                                                                        <TextBlock x:Name="txt"
+                                                                                                                   Text="{Binding DisplayName}"
+                                                                                                                   FontSize="11"
+                                                                                                                   Foreground="{DynamicResource CheckupPrimaryText}"
+                                                                                                                   Margin="14,3,6,2"/>
+                                                                                                    </DockPanel>
+                                                                                                </Border>
+                                                                                                <ControlTemplate.Triggers>
+                                                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                                                        <Setter TargetName="bdr" Property="Background" Value="{DynamicResource CheckupComboItemHoverBackground}"/>
+                                                                                                    </Trigger>
+                                                                                                    <!-- Deactivated Document Rule: greyed, not selectable (D14) -->
+                                                                                                    <Trigger Property="IsEnabled" Value="False">
+                                                                                                        <Setter TargetName="txt" Property="Foreground" Value="{DynamicResource CheckupSecondaryText}"/>
+                                                                                                        <Setter TargetName="txt" Property="FontStyle" Value="Italic"/>
+                                                                                                    </Trigger>
+                                                                                                </ControlTemplate.Triggers>
+                                                                                            </ControlTemplate>
+                                                                                        </Button.Template>
+                                                                                    </Button>
+                                                                                </Grid>
+                                                                                <DataTemplate.Triggers>
+                                                                                    <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=ContentPresenter}, Path=(ItemsControl.AlternationIndex)}" Value="1">
+                                                                                        <Setter TargetName="rowBg" Property="Background" Value="{DynamicResource CheckupRowBackground1}"/>
+                                                                                    </DataTrigger>
+                                                                                </DataTemplate.Triggers>
+                                                                            </DataTemplate>
+                                                                        </ItemsControl.ItemTemplate>
+                                                                    </ItemsControl>
+                                                                </StackPanel>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </ScrollViewer>
+                                            </Grid>
+                                        </Border>
+                                    </Popup>
 
                                     <!-- Sub-col 0+1: Display TextBlock (normal rows in display mode) -->
                                     <TextBlock Grid.Column="0" Grid.ColumnSpan="2"

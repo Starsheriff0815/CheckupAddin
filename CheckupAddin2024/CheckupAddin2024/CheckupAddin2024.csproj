@@ -90,6 +90,11 @@
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<TargetPath>Catalogs\Demo.catalog.json</TargetPath>
 		</None>
+		<!-- Shipped template iLogic rules (T46) — linked from 2026 (single source) → bin\Rules\. -->
+		<None Include="..\..\CheckupAddin2026\CheckupAddin2026\Rules\*.iLogicVb">
+			<Link>Rules\%(Filename)%(Extension)</Link>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
 	</ItemGroup>
 
 </Project>

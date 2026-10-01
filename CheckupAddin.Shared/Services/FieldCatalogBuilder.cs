@@ -135,6 +135,10 @@ namespace CheckupAddIn.Services
 
             items.Add(new FieldItem("", LanguageLoader.Get("Field_None"), "", GRP_NONE, false));
 
+            // "Run iLogic Rule" — built-in action entry, always first in Special Functions (T46).
+            string ruleLabel = LanguageLoader.Get("Field_RunILogicRule");
+            items.Add(new FieldItem(RuleKey.Prefix, ruleLabel, ruleLabel, GRP_SPECIAL, false));
+
             // ── Document values — build AllowedValues lists for asset-backed fields ──
             // Enumerated once per catalog build (triggered by document change, not every refresh).
             var materialNames   = BuildAssetNameList(doc, forMaterial: true);
@@ -223,6 +227,7 @@ namespace CheckupAddIn.Services
             }
 
             var _result = items.OrderBy(x => GroupOrder(x.GroupName))
+                               .ThenBy(x => x.IsRuleEntry ? 0 : 1)   // "Run iLogic Rule" pinned first
                                .ThenBy(x => x.DropText, NaturalComparer)
                                .ToList();
             PerfLogger.LogCatalogBuild(_assetMs, _structMs,
@@ -288,7 +293,7 @@ namespace CheckupAddIn.Services
             return structItems;
         }
 
-        private static readonly IComparer<string> NaturalComparer =
+        internal static readonly IComparer<string> NaturalComparer =
             Comparer<string>.Create((a, b) =>
             {
                 if (a == null && b == null) return 0;
@@ -728,6 +733,9 @@ namespace CheckupAddIn.Services
         private string ResolveFieldValueWithCycleGuard(string fieldKey, Document doc, HashSet<string> visitedLogicGroups)
         {
             if (string.IsNullOrWhiteSpace(fieldKey)) return "";
+
+            // Rule Button rows carry no value (T46, D19) — a formula reference resolves to "".
+            if (RuleKey.IsRuleKey(fieldKey)) return "";
 
             // Logic Set row: pass through to the group's configured TargetFieldKey.
             // CYCLE GUARD (V1 safeguard): a Group whose TargetFieldKey points to its own SPECIAL:LOGIC:

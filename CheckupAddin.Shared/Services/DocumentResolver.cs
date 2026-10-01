@@ -17,44 +17,6 @@ namespace CheckupAddIn.Services
         }
 
         /// <summary>
-        /// Returns the best available document:
-        /// - Active IPT → that IPT
-        /// - Active assembly with selected component → referenced document
-        /// - Active assembly without selection → the assembly itself
-        /// - Other — falls back to active document
-        /// </summary>
-        public Document GetActiveOrSelectedDocument(out string error)
-        {
-            error = "";
-
-            if (_app.ActiveDocument == null)
-            {
-                error = "No active document.";
-                return null;
-            }
-
-            if (_app.ActiveDocument is PartDocument)
-                return (Document)_app.ActiveDocument;
-
-            if (_app.ActiveDocument is AssemblyDocument asm)
-            {
-                var selectSet = asm.SelectSet;
-                if (selectSet.Count > 0)
-                {
-                    object sel = null;
-                    try { sel = selectSet[1]; } catch { }
-
-                    var doc = TryResolveDocument(sel);
-                    if (doc != null) return doc;
-                }
-
-                return (Document)asm;
-            }
-
-            return (Document)_app.ActiveDocument;
-        }
-
-        /// <summary>
         /// Returns all distinct documents from the current SelectSet.
         /// isMulti is true when 2 or more distinct part documents are selected.
         /// isAssemblyFallback is true when the active document is an assembly but no component
@@ -64,7 +26,7 @@ namespace CheckupAddIn.Services
         /// subAsmGroups maps each immediate-parent IAM filename to a dict of (partFilename → count);
         /// empty string key means the part is directly in the top-level assembly.
         /// Callers can use isAssemblyFallback to detect a "nothing selected" state in an IAM.
-        /// Falls back to GetActiveOrSelectedDocument behaviour for 0 or 1 selections.
+        /// With no component selected it falls back to the active document (an assembly → isAssemblyFallback).
         /// </summary>
         public List<Document> GetAllSelectedDocuments(out bool isMulti, out bool isAssemblyFallback,
             out Dictionary<string, int> instanceCounts,
@@ -186,14 +148,6 @@ namespace CheckupAddIn.Services
             catch { }
 
             return null;
-        }
-
-        // Kept for GetActiveOrSelectedDocument which still resolves to Document directly.
-        private static Document TryResolveDocument(object sel)
-        {
-            var occ = TryResolveOccurrence(sel);
-            if (occ == null) return null;
-            try { return (Document)occ.Definition.Document; } catch { return null; }
         }
     }
 }

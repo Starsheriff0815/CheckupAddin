@@ -15,13 +15,15 @@ lives. No setup knowledge needed.
 
 ![The main Checkup window](images/main-window-v2.gif)
 
+> **Note:** This Clip still Shows the Previous Version (Purge Styles Button and the old three Preset Buttons) — an Updated Clip will Follow Soon.
+
 *The Main Addin Window Presents Users with a Maximum of 30 Rows which can be Sorted via Drag & Drop Handles.
 Users can Add / Remove Rows from the Dropdown Menu on the Right. And Select, for the Row on which the Dropdown Menu
 is Opened, any Value Present in the Object which is Selected in Inventor's Model Space / Model Browser.
 The Addin either Lists a Single or Multiple Selected Objects. Within an Assembly (IAM) or a Part (IPT) it Lists the
 Document itself if nothing is Selected.
-At the Bottom of the Addin Window are three Preset Buttons Editable by Users through a Single Mouse Right Click (Context Menu).
-Also on the Bottom Left is the "Purge Styles" Button which Cleans IAM / IPT / IDW.
+At the Bottom Left of the Addin Window are the Preset Buttons (up to 12) Editable by Users through a Single Mouse Right Click (Context Menu).
+The "+" Button Adds a Copy of the Active Preset, and Preset Buttons which do not Fit are Listed under "More ›".
 On the Bottom Right is the "I" (Info) Button, the "Reset" Button and the "Close" Button.
 At the Top Right is the "Logics-Constructor" Button Opening a Separate Window.
 (see Info Windows for Further Information)*
@@ -101,7 +103,8 @@ The numbers below correspond to the markers on the screenshot:
    Favorites area you fill by right-clicking entries to pin them, and the full
    list of available values grouped by where they come from. Values that do not
    exist on the current object appear greyed out and struck through; special
-   functions from the Logics-Constructor are tagged "S:" in red.
+   functions are tagged "S:" in red — "Run iLogic Rule" first (see 8), then the
+   functions you built in the Logics-Constructor.
    <!-- optional clip → ![Field Selector](images/field-selector.gif) -->
 3. **Viewing and editing a value** — Each row's value field shows what was read
    from Inventor. Click it once to edit inline and write the new value straight
@@ -120,28 +123,65 @@ The numbers below correspond to the markers on the screenshot:
    red as a reminder that you are in multi-select. When multiple instances of the
    same component are selected in an assembly, a `(N)` counter appears next to the
    name — e.g. `Schraube_M8.ipt (6)`. Use the **view-mode button** on the left of the
-   header (its label shows the current mode and a `⇄` arrow — `S ⇄`, `C ⇄`, `D ⇄`),
-   or left-click the filename itself, to cycle through three display modes:
+   header (its label shows the current mode and a `⇄` arrow — `S ⇄`, `C ⇄`, `D ⇄`)
+   to cycle through three display modes:
    - **Plain (S)** — filename + count (default)
    - **Compact (C)** — adds how many sub-assemblies contain this component, e.g. `(6, 2 IAM)`
    - **Detailed (D)** — groups by sub-assembly, e.g. `Baugruppe.iam > Schraube_M8.ipt (3)`;
      components directly in the top assembly are listed under the assembly's own name
    The selected mode is remembered between sessions (and resets to **S** when you press
    Reset). The header wraps to at most 2 lines (5 in Detailed) and then trims; hover
-   over it to see the full text. Long row values follow the same 2-line rule.
+   over it to see the full text. Right-click the file name to copy the shown text to
+   the clipboard, just like a row value. Long row values follow the same 2-line rule.
    ![The document-name header showing the instance counter across different selections and the three S / C / D display modes](images/main-window-Instances-counter.gif)
-7. **Presets** — The three buttons at the bottom store row layouts you use often.
-   Right-click a preset to save the current layout into it, or to export and
-   import layouts — letting you build a personal library and share it between
-   machines.
+   > **Note:** This Clip still Shows the Previous Version of the Window — an Updated Clip will Follow Soon.
+7. **Presets** — The buttons at the bottom left store row layouts you use often.
+   A fresh install (and **Reset**) starts with a single **Demo** preset — or with
+   your company's presets, if your CAD administrator put them into
+   `Checkup_Settings.json`.
+   - **Click** a preset to switch to it. The active preset has a blue frame.
+   - **"+"** adds a copy of the active preset — including row changes you have not
+     saved yet — named e.g. `Demo (2)`, and makes it active. Up to **12** presets.
+   - **Right-click** a preset to save the current rows into it (this is also where
+     you rename it), export it (or all presets), import, or delete it.
+   - **Drag** a preset to reorder. When the window is too narrow, the presets that
+     do not fit move into **More ›** — click it to switch to them, or drag them
+     back onto the bar. Drop a preset onto **More ›** to move it to the end.
+   - **Import** lets you tick one or more presets from a file: **Replace this
+     preset** overwrites the right-clicked one; **Add as new** adds them as new
+     buttons (if a name or ID already exists, you choose to overwrite or add).
+     This lets you build a personal library and share it between machines.
    <!-- optional clip → ![Presets](images/presets.gif) -->
-8. **Style Purger** — The button at the bottom-left removes unused styles from the
-   current part, assembly, or drawing in one click. (It does not save the file for
-   you — save manually afterwards.)
-   <!-- optional clip → ![Style Purger](images/style-purger.gif) -->
+8. **Run iLogic Rule** — Turn any row into a one-click button for an iLogic rule.
+   Pick **S: Run iLogic Rule** in the Field Selector: the row shows a button that
+   says *Right Click to Set iLogic Rule*. **Right-click** it to choose a rule — the
+   list shows the rules stored in the open document, the rules in your iLogic rule
+   folders (as set in Inventor's iLogic Configuration), grouped by folder, and the
+   rules that come with Checkup (group "Checkup"). The button then shows the rule's
+   name; a **left-click** runs it on the open document, exactly as if you ran it
+   from Inventor's iLogic browser. Right-click again at any time to pick another
+   rule. Save the row into a preset to keep it. If the rule file cannot be found
+   (for example on another PC), the button is greyed out and struck through.
+   Checkup never saves your files — save manually afterwards.
+   - **Style cleanup rules included:** *Bereinigen IDW+IPT+IAM* cleans up unused
+     styles in the open part, assembly or drawing (this replaces the former
+     "Purge Styles" button). *Purge Styles Selection IDW+IPT+IAM* does the same, but
+     when an assembly is open and parts or sub-assemblies are selected, it cleans the
+     selected objects — a selected sub-assembly including everything below it.
+   - **Before you use them:** both rules start with a CONFIGURATION block (drawing
+     template path, border, title block and sketched symbol names). The shipped
+     values are examples — **copy the rule into your own iLogic rule folder and
+     adapt the configuration to your paths and names there.** Checkup updates
+     replace the files in its own `Rules` folder, so edits made there are lost.
+   <!-- optional clip → ![Run iLogic Rule](images/run-ilogic-rule.gif) -->
 9. **Info, Reset, Close and the status line** — The bottom-right buttons open the
    built-in help, reset the layout to defaults, and close the window. The small
-   status line just above them reports the result of edits, purges, and refreshes.
+   status line just above them reports the result of edits, rule runs, and refreshes.
+   The main window and the Logics-Constructor open again where you last closed them —
+   same monitor, position and size (the Logics-Constructor also stays maximized).
+   Info windows and dialogs always open on top of the window they belong to.
+   **Reset** brings all window and dialog sizes back to their factory values and
+   centers the main window on the monitor Inventor is running on.
    <!-- optional clip → ![Bottom-right buttons](images/bottom-right-buttons.gif) -->
 10. **Automatic behaviors** — The grid keeps itself up to date when you switch
     documents or change your selection, follows Inventor's dark or light theme
@@ -251,3 +291,4 @@ in — open it any time for a refresher on that window.
 
 > **Want more?** For the full technical depth, see the
 > [Technical Design Document](CheckupAddin%20-%20Technical%20Design%20Document.md).
+> Curious how earlier versions looked? See [Earlier Designs](images/archive/README.md).

@@ -19,7 +19,6 @@
 
     <sys:String x:Key="Btn_CatalogBuilder">📋 Logik-Baukasten</sys:String>
     <sys:String x:Key="Tip_CatalogBuilder">Logik-Baukasten öffnen</sys:String>
-    <sys:String x:Key="Btn_PurgeStyles">Stile Bereinigen</sys:String>
     <sys:String x:Key="Btn_Info">ℹ</sys:String>
     <sys:String x:Key="Btn_Reset">Reset</sys:String>
     <sys:String x:Key="Btn_Close">Schließen</sys:String>
@@ -32,6 +31,7 @@
     <sys:String x:Key="Menu_ExportPreset">Dieses Preset exportieren...</sys:String>
     <sys:String x:Key="Menu_ExportAllPresets">Alle Presets exportieren...</sys:String>
     <sys:String x:Key="Menu_ImportPreset">Preset importieren...</sys:String>
+    <sys:String x:Key="Menu_DeletePreset">Preset löschen...</sys:String>
 
     <sys:String x:Key="Dlg_SavePreset_Title">Preset speichern</sys:String>
     <sys:String x:Key="Dlg_SavePreset_Label">Preset benennen:</sys:String>
@@ -61,8 +61,6 @@
     <sys:String x:Key="Action_AddRow">➕  Zeile hinzufügen</sys:String>
     <sys:String x:Key="Action_RemoveRow">➖  Zeile entfernen</sys:String>
 
-    <sys:String x:Key="FieldSel_SearchPlaceholder">Suchen...</sys:String>
-    <sys:String x:Key="FieldSel_Favoriten">Favoriten</sys:String>
     <sys:String x:Key="FieldSel_PinTooltip">Rechtsklick: Als Favorit anheften / lösen</sys:String>
 
     <sys:String x:Key="Msg_NoDocument">Kein Dokument aktiv.</sys:String>

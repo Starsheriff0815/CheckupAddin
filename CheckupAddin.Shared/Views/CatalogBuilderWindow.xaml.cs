@@ -236,6 +236,14 @@ namespace CheckupAddIn.Views
                 Height = h;
             }
 
+            // T48: reopen on the last monitor + position (+ maximized); otherwise CenterOwner.
+            string placement = UiStateStore.LoadCatalogBuilderPlacement();
+            if (WindowPlacement.IsUsable(placement))
+            {
+                _startupPlacement     = placement;
+                WindowStartupLocation = WindowStartupLocation.Manual;
+            }
+
             vm.AskForText = (title, initial) =>
             {
                 // Clear DataGrid selection before AND after the rename dialog.
@@ -1705,6 +1713,17 @@ namespace CheckupAddIn.Views
         //  CLOSING — dirty-check prompt
         // ══════════════════════════════════════════════
 
+        // T48: remembered placement to restore in OnSourceInitialized (null = factory centering).
+        private string _startupPlacement;
+
+        protected override void OnSourceInitialized(EventArgs e)
+        {
+            base.OnSourceInitialized(e);
+            if (_startupPlacement != null)
+                WindowPlacement.Apply(this, _startupPlacement, allowMaximized: true);
+            _startupPlacement = null;
+        }
+
         protected override void OnClosing(CancelEventArgs e)
         {
             if (_vm?.IsDirty == true)
@@ -1719,6 +1738,8 @@ namespace CheckupAddIn.Views
                 if (choice == true) _vm.SaveCommand.Execute(null);
             }
             base.OnClosing(e);
+            if (!e.Cancel)
+                UiStateStore.SaveCatalogBuilderPlacement(WindowPlacement.Capture(this, allowMaximized: true));
         }
 
         protected override void OnClosed(EventArgs e)

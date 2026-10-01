@@ -17,7 +17,6 @@
     <sys:String x:Key="Lbl_ViewMode_Detailed">D ⇄</sys:String>
     <sys:String x:Key="Tip_ViewMode_Cycle">Ansicht wechseln (Standard / Kompakt / Detailliert)</sys:String>
 
-    <sys:String x:Key="Btn_PurgeStyles">Stile Bereinigen</sys:String>
     <sys:String x:Key="Btn_Info">Info</sys:String>
     <sys:String x:Key="Btn_Reset">Reset</sys:String>
     <sys:String x:Key="Btn_Close">Schließen</sys:String>

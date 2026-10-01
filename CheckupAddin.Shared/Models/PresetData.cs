@@ -1,13 +1,19 @@
 namespace CheckupAddIn.Models
 {
     /// <summary>
-    /// Serialized form of one preset (name + ordered list of field keys).
+    /// Serialized form of one preset (ID + name + ordered list of field keys).
     /// User-saved presets are persisted to HKCU\Software\Checkup 2026\Presets.
     /// Factory defaults come from Checkup_Settings.json via PresetsManager.
     /// Field keys use the same prefix conventions as FieldItem.Key.
     /// </summary>
     public class PresetData
     {
+        /// <summary>
+        /// Stable unique identifier (T47) — independent of the preset's position and label.
+        /// Persisted together with <see cref="Name"/> in the registry, the settings file and export files.
+        /// Empty in files written before T47; <see cref="Services.PresetsManager"/> fills it on load.
+        /// </summary>
+        public string Id { get; set; } = "";
         public string Name { get; set; } = "";
         public List<string> FieldKeys { get; set; } = new();
         /// <summary>

@@ -2,7 +2,7 @@
 
 > **Scope:** All four variants — CheckupAddin2024/2025 (.NET 4.8) and CheckupAddin2026/2027 (.NET 8.0).
 > **Author of this doc:** Starsheriff.
-> **Last updated:** 2026-06-17.
+> **Last updated:** 2026-09-29.
 
 ---
 
@@ -16,8 +16,8 @@
 - Write iProperties and parameters directly from the add-in
 - Saveable preset layouts — load a named preset to show the relevant fields for that document type
 - Logics-Constructor: configure derived/computed fields without coding
-- ~~Spezi Baukasten: catalog-backed specialty designations for IZ-specific parts~~ **⚠ Legacy** — replaced by Logics-Constructor capability set
-- Style Purger: one-click cleanup of unused styles in IDW/IPT/IAM
+- ~~Spezi Baukasten: catalog-backed specialty designations for company-specific parts~~ **⚠ Legacy** — replaced by Logics-Constructor capability set
+- Run iLogic Rule: put a one-click Rule Button for any iLogic rule into any Row (replaces the former built-in Style Purger; style cleanup ships as a template rule)
 
 **Target user:** Engineering teams. German and English UI (language detected automatically from Inventor; additional languages can be added).
 
@@ -101,7 +101,7 @@ StandardAddInServer  →  CheckupWindow (View)
 | `DocumentResolver`      | Resolves the "best" active document: active IPT, selected component(s) in IAM, or IAM itself                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `FieldCatalogBuilder`   | Discovers all available fields at runtime; resolves field key → display value                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `PropertyReader`        | Reads iProperties (standard + user-defined) and model/user parameters. Also owns `UnitAbbreviation()` (mm/cm/m/in/ft) for `DOC:UnitsLength` — relocated here when `SheetMetalReader` was deleted (Task #29).                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `StylePurger`           | Calls `StylesManager.UpdateStyles()` + `PurgeUnusedStyles()` per doc type (IDW/IPT/IAM)                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `ILogicRuleService`     | Rule Buttons (T46): discovers iLogic rules (Document Rules of the active document, Inventor's External Rule Directories, the add-in's own `Rules\` folder) and runs them on the active document — late-bound through the iLogic add-in's automation object. `RuleKey` holds the `SPECIAL:RULE:` Field Key format. See §5.6. |
 | `FieldWriter`           | Writes values back to iProperties, parameters, and document-level values. Entry point: `WriteFieldValue(doc, fieldKey, newValue)` → returns `null` on success or an error string on failure. Dispatch: UDEF: → user-defined property set; IPROP\| → standard property set (DisplayName match); PARAM:User:/Model: → parameter by name; DOC: → document-level value. Non-writable keys (read-only system fields, SPECIAL:LOGIC:) return a "not writable" error string. After every confirmed successful write, calls `TryUpdate(doc)` once so dependents (formula iProperties, iLogic, geometry) propagate. Cascade Apply methods wrap their write bursts in `BeginBatch()` → `IDisposable` that flushes one `TryUpdate` per touched doc on dispose, preventing a recalc storm on 27-doc multi-select Logic Apply. |
 | `LanguageLoader`        | Loads DE/EN JSON string files; applies to WPF DynamicResource system. Key prefixes: `Btn_` (buttons), `Field_` (field labels), `Tip_` (tooltips), `Lbl_` / `Msg_` (labels/messages), `CatBuilder_` (Catalog Editor UI), `CardType_` (card type names), `Cap_` (capability set UI), `Info_` (info dialog content), `Cycle_` (cycle/error display). Sources: (1) XAML resource dict — base fallback, designer-visible; (2) `Addin_Language_File_DE/EN.json` — overrides + long texts. JSON wins when a key exists in both. See §5.5 for full flow. |
 | `ThemeLoader`           | Detects Inventor light/dark theme; swaps XAML resource dictionaries; sets DWM caption color                                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -128,14 +128,16 @@ Field keys are stable string identifiers for every property the add-in can read 
 | `UDEF:`                 | `UDEF:MyProp`             | User-defined iProperties                                                                                                                                        |
 | `PARAM:Model:`          | `PARAM:Model:d25`         | Model parameters                                                                                                                                                |
 | `PARAM:User:`           | `PARAM:User:Breite`       | User parameters                                                                                                                                                 |
-| `SPECIAL:`              | —                         | **⚠ All hardcoded SPECIAL: entries removed.** The only valid SPECIAL: key is `LOGIC:` (below). The legacy hardcoded keys (`MiterGap`, `FlangeDistance`, `Halbzeug`/`HalbzeugName`/`HalbzeugIdent`, `Spezi1`/`Spezi2`) were fully removed from both projects (Task #29) — no catalog entries and **no resolver code remains**. An old preset still carrying one of these keys degrades to a greyed/strikethrough "missing field" row (see §5.1). No new hardcoded Special Functions shall be added — users build all derived fields via Logics-Constructor cards. |
+| `SPECIAL:`              | —                         | **⚠ All hardcoded SPECIAL: value entries removed.** The only valid SPECIAL: keys are `LOGIC:` and `RULE:` (below). The legacy hardcoded keys (`MiterGap`, `FlangeDistance`, `Halbzeug`/`HalbzeugName`/`HalbzeugIdent`, `Spezi1`/`Spezi2`) were fully removed from both projects (Task #29) — no catalog entries and **no resolver code remains**. An old preset still carrying one of these keys degrades to a greyed/strikethrough "missing field" row (see §5.1). No new hardcoded Special Functions shall be added — users build all derived fields via Logics-Constructor cards. The single built-in exception is the `RULE:` **action** entry (T46), which computes no value. |
 | `SPECIAL:LOGIC:`        | `SPECIAL:LOGIC:myGroupId` | Logics-Constructor group row                                                                                                                                     |
+| `SPECIAL:RULE:`         | `SPECIAL:RULE:EXT:Purge\MyRule.iLogicVb` | Rule Row (T46): `SPECIAL:RULE:` = empty Rule Button · `EXT:<relative path>` = External Rule (Inventor's External Rule Directories) · `ADDIN:<relative path>` = add-in `Rules\` folder · `DOC:<rule name>` = Document Rule of the active document. Carries no value. See §5.6. |
 
 **Key rules:**
 
 - 2-part and 3-part IPROP keys both handled in `ResolveFieldValue` — short form used in capability files/formulas, long form generated internally.
 - The legacy hardcoded `SPECIAL:` keys (`MiterGap`, `FlangeDistance`, `Halbzeug*`, `Spezi1/2`) are **fully removed** (Task #29) — no Field Selector entry and no resolver code. A saved preset created before the Logics-Constructor replaced them may still reference one of these keys; such a row resolves to nothing and renders as a greyed/strikethrough "missing field" (red "S:" prefix retained because the key is still `SPECIAL:`-prefixed). It cannot be created anew.
 - `SPECIAL:LOGIC:` rows are the only rows that can have formula/card logic applied. Normal rows (PARAM:, UDEF:, etc.) are never intercepted — this is a hard design rule.
+- `SPECIAL:RULE:` rows (Rule Rows) carry **no value**: skipped by `BatchReadValues`, the refresh value cache and every Logic post-pass; never offered in any Logics-Constructor field picker; a formula reference to one resolves to `""`.
 - ⚠ **`UDEF:X` ≠ `PARAM:User:X`** — these are completely different objects. `UDEF:Breite` refers to a user-defined iProperty named "Breite" in the document's property sets. `PARAM:User:Breite` refers to a UserParameter named "Breite" in the Parameters collection. A parameter is **not** an iProperty and vice versa. Writing to `UDEF:X` when no such iProperty exists returns `"User Defined property 'X' not found in any user-defined property set."` → MessageBox appears → row stays in `IsInlineEditing = true` → auto-refresh timer is permanently blocked (`Rows.Any(r => r.IsInlineEditing)` = true) → all Inventor-side changes stop appearing in the addin until the stuck row is cancelled. This is a common preset configuration error when the user adds rows by name rather than through the Field Selector.
 - ⚠ **Inventor "Export Parameter" creates a read-only UDEF iProperty** — toggling the Export flag on a `UserParameter` in Inventor's Parameters dialog publishes it into the Custom iProperties tab under the same name. That Custom entry is read-only: `doc.Update()` always reverts a direct write to it. `WriteUserDefinedProperty` detects this case by checking whether a `UserParameter` with the same name exists; if so, it redirects the write to `WriteParameter` instead (the iProperty syncs automatically after `TryUpdate`). The Field Selector shows both `UDEF:X` and `PARAM:User:X` entries for such a parameter; writing to either succeeds.
 - ⚠ **`PARAM:Model:d25` displays its expression, not its value** — if d25 is a driven parameter (e.g., `d25.Expression = "Breite"`), `ReadParameterExpression` returns the string `"Breite"`, not the numeric result. This is correct behaviour. Writing to the d25 row redirects through `ResolveParamReference` to the referenced parameter (Breite) and sets it there.
@@ -152,9 +154,9 @@ Four elements from left to right:
 
 | Position      | Element                      | Detail                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 |---------------|------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Far left      | **View Mode Cycle button**     | Button whose **label is the current mode letter + `⇄` symbol** (e.g. `S ⇄`, `C ⇄`, `D ⇄`) — both letter and symbol are fully catalog-managed via the `Lbl_ViewMode_Plain` / `_Compact` / `_Detailed` keys, surfaced by the `FileNameViewModeLabel` VM property. Left-clicking it cycles the Document Name Field through three display modes: **Plain (S) → Compact (C) → Detailed (D) → Plain**. Left-clicking on the Document Name Field itself also cycles. Active mode persisted via `UiStateStore.FileNameViewMode`; **Reset returns it to Plain (S)**. The button's left edge is indented 7 px so it lines up with the Row Drag Handles below (handle Grid is 10 px wide, centered in the rows' 24 px Col 0). Tooltip from `Tip_ViewMode_Cycle`. |
+| Far left      | **View Mode Cycle button**     | Button whose **label is the current mode letter + `⇄` symbol** (e.g. `S ⇄`, `C ⇄`, `D ⇄`) — both letter and symbol are fully catalog-managed via the `Lbl_ViewMode_Plain` / `_Compact` / `_Detailed` keys, surfaced by the `FileNameViewModeLabel` VM property. Left-clicking it cycles the Document Name Field through three display modes: **Plain (S) → Compact (C) → Detailed (D) → Plain**. This button is the **only** control that cycles the mode — its click area is exactly the visible button (margins are not hit-testable); left-clicking the Document Name Field next to it does **not** cycle (Task #45). Active mode persisted via `UiStateStore.FileNameViewMode`; **Reset returns it to Plain (S)**. The button's left edge is indented 7 px so it lines up with the Row Drag Handles below (handle Grid is 10 px wide, centered in the rows' 24 px Col 0). Tooltip from `Tip_ViewMode_Cycle`. |
 | Second left   | **"File:" label**              | Static text label; vertically aligned with the Row Drag Handles below                                                                                                                                                                                                                                                                                                                                                                                                  |
-| Center        | **Document Name Field**        | Shows the filename(s) of the active/selected Source Object; auto-wraps and trims with ellipsis at a **maximum of 2 lines** (Plain/Compact) or **5 lines** (Detailed) — the cap is driven by the `FileNameMaxHeight` VM property; full text visible on mouse-over tooltip. See **View modes** below.                                                                                                                                                                      |
+| Center        | **Document Name Field**        | Shows the filename(s) of the active/selected Source Object; auto-wraps and trims with ellipsis at a **maximum of 2 lines** (Plain/Compact) or **5 lines** (Detailed) — the cap is driven by the `FileNameMaxHeight` VM property; full text visible on mouse-over tooltip. **Single right-click copies the shown text to the clipboard** — same handler (`Value_RightClick`) and status message as the Value Field; right-click area spans the full field width (`Background="Transparent"`). Left-click does nothing (Task #45). See **View modes** below.                                                                                                                                                                      |
 | Far right     | **Logics-Constructor button**  | Opens the Logics-Constructor (CatalogBuilder) window; vertically aligned with the Field Selectors below in both position and width                                                                                                                                                                                                                                                                                                                                       |
 
 **Document Name Field — view modes:**
@@ -171,6 +173,7 @@ Rules common to all modes:
 - Red text when ≥ 2 distinct documents are selected (all modes).
 - Mouse-over tooltip always shows the full current text (handles wrap/ellipsis overflow).
 - The field caps at 2 lines (Plain/Compact) or 5 lines (Detailed) — text beyond the cap is trimmed with an ellipsis and only fully visible via tooltip or by widening the window. See `FileNameMaxHeight`.
+- Right-click copies exactly what is shown in the current mode — including `(N)` / `X IAM` counters and the Detailed line breaks — and always the full text, even when the display is trimmed with an ellipsis (Task #45).
 
 - **Row:** Field Selector (ComboBox) + Value Field. Up to 30 rows (MAX_ROWS = 30).
 - **Field Selector:** the ComboBox column on the right side of every Row. Full behaviour:
@@ -186,7 +189,7 @@ Rules common to all modes:
   - **Field missing from current selection** (preset entry not available on the selected object): label still shown, but greyed out + strikethrough. Dropdown stays closed; no error.
   - **Non-editable field**: label shown greyed out (no strikethrough).
   - **Special Function entry**: label prefixed with `S:` — the `S:` prefix is rendered in red; the rest of the label in normal color.
-  - **Right-click does nothing here** — `FieldSelectorBtn` (the closed-state header button) has no right-click handler, so it does **not** copy its label to clipboard. Right-click-to-copy is a **Value Field-only** gesture (see below). Right-click inside the *opened* popup is a different, unrelated gesture — pin/unpin a favorite (Zone 3/4, see below) — never copy.
+  - **Right-click does nothing here** — `FieldSelectorBtn` (the closed-state header button) has no right-click handler, so it does **not** copy its label to clipboard. Right-click-to-copy is a gesture of the **Value Field** (see below) and the **Document Name Field** (header bar) only. Right-click inside the *opened* popup is a different, unrelated gesture — pin/unpin a favorite (Zone 3/4, see below) — never copy.
 
   **Opened state — list contents:**
 
@@ -220,8 +223,9 @@ Rules common to all modes:
   **Group order (fixed):**
 
   **1. Special Functions** (German label: "Sonderfunktionen") — always the first group:
-  - Contains: all Logics-Constructor groups (`SPECIAL:LOGIC:`) where at least one Card or Basic Logic is **active** (toggled on). Label: `S: <GroupLabel>` with `S:` in red.
-  - **Auto-collapse rule:** when all Logics-Constructor groups have every Card and Basic Logic deactivated, the group has no entries → group **auto-collapses** and the collapse chevron is **disabled**. When at least one LC group becomes active: group auto-expands and chevron re-enables.
+  - **First entry, always: `S: Run iLogic Rule`** (German: "iLogic-Regel ausführen", key `SPECIAL:RULE:`) — pinned above the natural sort. Picking it turns the Row into a Rule Row with an empty Rule Button (see Value Field below and §5.6). Can be added to any number of Rows. Re-picking it on a Rule Row keeps that Row's assigned rule.
+  - Then: all Logics-Constructor groups (`SPECIAL:LOGIC:`) where at least one Card or Basic Logic is **active** (toggled on), in natural order. Label: `S: <GroupLabel>` with `S:` in red.
+  - **Auto-collapse:** only when the group would be empty — which no longer happens, because "Run iLogic Rule" is always present (T46). The former rule "auto-collapse + disabled chevron when every LC group is deactivated" is therefore retired; the group always stays user-collapsible.
   - ⚠ **Legacy note (Task #29):** `SPECIAL:MiterGap` ("Gehrungslücke") and `SPECIAL:FlangeDistance` were once hardcoded entries in this group. Both — together with `SPECIAL:Halbzeug*` and `SPECIAL:Spezi1/2` — are **fully removed** from both projects: no catalog entry, no resolver, no `SheetMetalReader`. An old preset still referencing one of these keys renders as a greyed/strikethrough **missing-field** row (red "S:" prefix retained), never a value.
 
   **2. User-Defined iProperties** (German: "Benutzerdefinierte iProperties", Grp\_iPropertiesCustom)
@@ -238,19 +242,20 @@ Rules common to all modes:
   - **Inline edit mode**: activated by single left-click; edit frame stretches the full width between Drag Handle and Field Selector.
   - **Dropdown**: a dropdown menu within the Value Field (e.g. Dropdown card rows).
   - **Action Button**: optional button at the far right of the Value Field frame; opens `CatalogPickerWindow` (Section 5.12) as a modal dialog. Present on Button card rows; absent on all other card types.
+  - **Rule Button** (Rule Rows only, T46): replaces every value display/edit control and fills the **whole** Value Field. Left-click runs the assigned iLogic rule; right-click (any state) opens the Rule Selector. No inline edit, no right-click copy, no Dropdown / Action Button / `ƒx`. Details in §5.6.
 - **2-line auto-flow cap (all display modes):** the value text auto-wraps and is capped at a **maximum of 2 lines** (`MaxHeight="36"`), then trimmed with an ellipsis; the full value is available on the mouse-over tooltip or by widening the window. This applies uniformly to the three display variants:
   - **Plain value** (`DisplayValue` TextBlock) — `TextWrapping=Wrap` + `MaxHeight` + `CharacterEllipsis`.
   - **Logic value-mismatch** (matched prefix + red unmatched tail) — rendered as a single wrapping `TextBlock` with two `Run`s (the red `Run` carries `CheckupErrorText`) so both parts flow and wrap together.
   - **Multi-token** (MultiPick / PairTransform rows) — the token `WrapPanel` auto-flows; the host `Border` uses `MaxHeight="36"` + `ClipToBounds` to hold it to 2 lines.
+  - **Exception — Rule Button:** its label is **single-line, never wraps**; a too-long rule name is trimmed with an ellipsis (full name on the tooltip).
 
 **Bottom bar (bottommost row — below all data rows):**
 
-Three groups from left to right. Buttons auto-size to their label text; groups never intersect or overlap when the window is resized.
+Two button groups. Buttons auto-size to their label text; groups never intersect or overlap when the window is resized.
 
 | Group  | Position              | Buttons                      | Notes                                                                                                                            |
 |--------|-----------------------|------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
-| Left   | Always furthest left  | **Style Purger**                 | Custom background: `CheckupSpecialButtonBackground` (amber tint — see theme palette)                                               |
-| Center | Always centered       | **Preset 1**, **Preset 2**, **Preset 3** | Standard button background                                                                                                       |
+| Left   | Left edge aligned with the Row Drag Handles and the View Mode Cycle button | **Preset Bar**: 1–12 **Preset Buttons** → **More ›** (only on overflow) → **"+"** | T47 (§5.3, §10.5). Layout: `PresetBarPanel` (presets → More → "+") in the `*` column of a 2-column `Grid` (`*` / `Auto`); presets that do not fit go into the More dropdown. `BottomBar_SizeChanged` sets the window `MinWidth` to one preset slot (126) + More slot (126) + "+" + right group, so the bar never overlaps the right group. The former **Style Purger** button was removed in T46 (§5.6). |
 | Right  | Always furthest right | **Info**, **Reset**, **Close**           | Reset: `CheckupDestructiveButtonBackground` (red tint); Close: `CheckupCancelButtonBackground` (red tint); Info: standard background |
 
 **Row Drag Handle:**
@@ -268,7 +273,7 @@ Three groups from left to right. Buttons auto-size to their label text; groups n
 
 - Displayed above the button row, inside the bottom bar area.
 - Italic text, `CheckupSecondaryText` color, FontSize 11.
-- Bound to `StatusMessage` on CheckupViewModel — updated after writes, style purge, refresh errors, etc.
+- Bound to `StatusMessage` on CheckupViewModel — updated after writes, rule runs, refresh errors, etc.
 - A `Separator` line sits between the status message and the button row.
 - **Fixed single-line height** (`Height="16"`, `TextWrapping="NoWrap"`, `TextTrimming="CharacterEllipsis"`, `ToolTip` shows the full text). `StatusMessage` can embed a multi-line `FileName` (Detailed/D view mode joins sub-assembly groups with `\n`) when multiple objects are selected; without a height cap the bar grows to fit every line and pushes row content out of view. The bar must never grow past one row — long/multi-line messages are truncated with an ellipsis, full text available via tooltip.
 
@@ -286,44 +291,50 @@ Three groups from left to right. Buttons auto-size to their label text; groups n
 
 **Preset buttons — additional detail:**
 
-- Labels (`Preset1Name`, `Preset2Name`, `Preset3Name`) are bound to ViewModel properties — names come from `Checkup_Settings.json`, not hardcoded in XAML.
-- Each button shows a small dot indicator (4×4 `Ellipse`) below the name — indicates the active preset (see code for fill/trigger details).
-- Right-click context menu on each preset button (5 items):
+- The Preset Bar is an `ItemsControl` bound to `CheckupViewModel.PresetButtons` (`PresetButtonVm`: Id, Name, IsActive, IsOverflow, CanDelete, IsDragging, DropMarker); labels come from the preset names, never hardcoded in XAML. One shared `ControlTemplate`; one `ContextMenu` resource (`PresetContextMenu`, `x:Shared="False"`).
+- **Left-click** switches preset (`SwitchPresetCommand`). **Width** follows the label between MinWidth 50 and MaxWidth 120 px; longer labels are trimmed with an ellipsis, full name on the tooltip; single line.
+- **"+" (Add Preset Button)** — square 30 × 30: adds a copy of the active preset with the **live Rows** (incl. unsaved changes), named `<name> (n)` (smallest free n ≥ 2; a trailing ` (n)` is stripped first), new ID, inherits `IsDemo`, appended at the end and made active. Disabled at **12** presets (tooltip explains; `ToolTipService.ShowOnDisabled`).
+- **More ›** — PatternFly-style overflow: `PresetOverflowPanel` hides the buttons that do not fit (from the first one that does not fit to the end) and flags them `IsOverflow`; the More Button opens a dropdown listing them (click = switch). If the **active** preset is hidden, the More Button shows its name + active visual, and right-click on it opens that preset's context menu.
+- **Drag-and-drop reorder** — the list order decides, the width cuts off: drag within the bar, from the More dropdown onto the bar (dropdown stays open while dragging; insert marker), within the dropdown, or onto **More ›** (= move to the end). Starts only after the system drag threshold, so a click still switches. Persisted immediately.
+- Right-click context menu on each preset button (6 items):
 
   | Item | Behavior |
   |---|---|
-  | **Preset speichern** | Saves the current row layout into the right-clicked slot |
+  | **Save Preset** | Saves the current row layout into the right-clicked preset; the InputDialog also renames it |
   | *(separator)* | |
-  | **Preset exportieren** | Exports the right-clicked slot into a preset library file (see below) |
-  | **Alle Presets exportieren** | Exports all 3 slots into a preset library file in one pass |
+  | **Export this Preset** | Exports the right-clicked preset into a preset library file (see below) |
+  | **Export All Presets** | Exports all presets (1–12) into a preset library file in one pass |
   | *(separator)* | |
-  | **Preset importieren…** | Opens a library file, shows a picker dialog listing all presets in the file; imports the chosen one into the right-clicked slot |
+  | **Import Preset…** | Opens a library file and the `PresetPickerDialog` (replace this preset, or add one or more as new — see below) |
+  | *(separator)* | |
+  | **Delete Preset…** | Asks for confirmation (`InfoDialog`, OK / Cancel); disabled on the last remaining preset; deleting the active preset activates its left neighbour (or the new first) |
 
 **Preset library file format:**
 
-A plain JSON file containing a `List<PresetData>` (any number of entries — not limited to 3). Each entry has `Name` (string) and `FieldKeys` (string list). The same file format is used for all export and import operations. The file can grow into a personal library over time and can be synced between machines.
+A plain JSON file containing a `List<PresetData>` (any number of entries). Each entry has `Id` (string), `Name` (string), `FieldKeys` (string list) and `IsDemo`. Files written before T47 have no `Id` and still load. The same file format is used for all export and import operations. The file can grow into a personal library over time and can be synced between machines.
 
 **Export behavior (single and all):**
 
 - A `SaveFileDialog` is shown (filter: `*.json`).
-- If the chosen file already exists: the file is read first; each preset being exported is matched by `Name` — overwritten if a match is found, appended as a new entry if not. Existing entries with non-matching names are preserved.
+- If the chosen file already exists: the file is read first; each preset being exported is matched by **`Id`** (library entries without an `Id` are matched by `Name`) — overwritten if a match is found, appended as a new entry if not. Other entries are preserved.
 - If the file does not exist: it is created with the exported presets as the initial entries.
 
 **Import behavior:**
 
-- An `OpenFileDialog` is shown (filter: `*.json`).
-- The chosen file is read and all `Name` values are extracted.
-- A **`PresetPickerDialog`** opens, listing the preset names in a `ListBox`. OK is disabled until the user selects one entry. ESC or Cancel closes without importing.
-- The selected preset is loaded into the right-clicked slot only. All other slots are untouched.
-- The slot's name and field keys are replaced; the active preset indicator updates if the modified slot is currently active.
+- An `OpenFileDialog` is shown (filter: `*.json`); the file's presets are listed in the **`PresetPickerDialog`** with a checkbox each.
+- **Replace this preset** (exactly one ticked; also double-click on an entry): the right-clicked preset's name + field keys are replaced; it keeps its own ID unless the file ID is free (never a duplicate ID); if it is the active preset, its rows are applied.
+- **Add as new** (one or more ticked): each ticked preset is appended as a new Preset Button in file order. An entry whose **ID or name** already exists triggers `PresetConflictDialog`: **Overwrite** (update the existing preset in place) / **Add as new** (new ID if the file ID is taken) / **Cancel** (abort the whole import, nothing changed); "Apply to all remaining conflicts" answers the rest. The active preset stays active (rows applied only if it was overwritten). Status: "`n` presets imported".
+- **12-preset limit:** the picker shows how many presets can still be added; if the ticked entries that match no existing preset alone exceed that, **Add as new** is disabled and a red hint asks to import fewer. If the answers to the conflict questions still exceed the limit, an `InfoDialog` says so and nothing is imported. Overwrites do not count against the limit.
+- Imported presets get `IsDemo = false`.
 
 **PresetPickerDialog:**
 
-- Small themed window (same visual style as `InputDialog`): title, prompt label, `ListBox`, OK / Cancel buttons.
-- Default size: 320 × 260 px; `MinWidth="280" MinHeight="180"`; `ResizeMode="CanResize"`; `WindowStartupLocation="CenterOwner"`. Size persisted via `UiStateStore.SaveInfoDialogSize("PresetPicker", ...)` / `TryLoadInfoDialogSize("PresetPicker", ...)` — follows §5.11.
-- `ListBox` uses `ScrollViewer.CanContentScroll="False"` for pixel-smooth scrolling.
-- OK enabled only when `ListBox.SelectedItem != null`; double-click also confirms; ESC cancels.
-- Language keys: `Dlg_PresetPicker_Title`, `Dlg_PresetPicker_Label`.
+- Small themed window (same visual style as `InputDialog`): title, prompt label, `ListBox` (`SelectionMode="Multiple"`, checkbox mirrors `IsSelected`), free-slot hint, **Replace this preset** / **Add as new** / Cancel buttons.
+- Default size: 420 × 300 px; `MinWidth="380" MinHeight="220"`; `ResizeMode="CanResize"`; `WindowStartupLocation="CenterOwner"`. Size persisted via `UiStateStore.SaveInfoDialogSize("PresetPicker", ...)` / `TryLoadInfoDialogSize("PresetPicker", ...)` — follows §5.11.
+- `ListBox` uses `ScrollViewer.CanContentScroll="False"` for pixel-smooth scrolling. ESC cancels.
+- Language keys: `Dlg_PresetPicker_Title`, `Dlg_PresetPicker_Label`, `Dlg_PresetPicker_Free`, `Dlg_PresetPicker_LimitHint`, `Btn_PresetReplace`, `Btn_PresetAddNew`.
+
+**PresetConflictDialog:** same visual style; body text (`Dlg_PresetConflict_Body`, preset name), optional checkbox `Chk_PresetConflict_ApplyAll` (only when more conflicts follow), buttons `Btn_PresetOverwrite` / `Btn_PresetAddNew` / `Btn_Cancel`. Size persisted as `"PresetConflict"`.
 
 **Multi-select visual indicator:**
 
@@ -331,11 +342,11 @@ A plain JSON file containing a `List<PresetData>` (any number of entries — not
 
 **`IsDemo` flag and demo-mode warning:**
 
-- `PresetData` has an `IsDemo` (bool, default `false`) property. The shipped `Checkup_Settings.json` sets `IsDemo: true` on all three demo presets.
+- `PresetData` has an `IsDemo` (bool, default `false`) property. The shipped `Checkup_Settings.json` sets `IsDemo: true` on its single "Demo" preset.
 - `SavePreset()` clears `IsDemo` on the saved slot **only when both** the new name AND the new field keys differ from the demo defaults (`DemoPresetName = "Demo"` / `_demoDefaultFieldKeys`). Rename-only or field-change-only does not clear the flag.
-- `PresetsManager.GetDefaults()` **must copy `IsDemo`** from the factory defaults into the returned copies. Omitting this causes `IsDemo=false` after Reset (since `new PresetData()` defaults to `false`), breaking the primary detection path.
+- `PresetsManager.GetDefaults()` **must copy every field — incl. `Id` and `IsDemo`** — from the factory defaults into the returned copies. Omitting this causes `IsDemo=false` after Reset (since `new PresetData()` defaults to `false`), breaking the primary detection path.
 - The session counter fields (`_demoWindowOpenCount`, `_demoShownThisSession`) are **`static`** — they persist across `CheckupViewModel` instances within the same Inventor session (AppDomain). `StandardAddInServer` creates a new `CheckupViewModel` on each window open; instance fields would reset on every open.
-- **Warning dialog trigger:** `CheckupViewModel.CheckAndShowDemoWarning(Window owner)` is called from `CheckupWindow.OnContentRendered`. It fires a warning `InfoDialog` when `IsDemoActive()` returns true (all 3 presets still have `IsDemo == true`) AND the session frequency rule is met: first window open in the Inventor session always shows the dialog; subsequently every 20th open of the add-in window. The session counter (`_demoWindowOpenCount`) is in-memory only — never persisted.
+- **Warning dialog trigger:** `CheckupViewModel.CheckAndShowDemoWarning(Window owner)` is called from `CheckupWindow.OnContentRendered`. It fires a warning `InfoDialog` when `IsDemoActive()` returns true (**all** presets — any count ≥ 1 — still have `IsDemo == true`, or match the demo name + field keys; `PresetsManager.IsUntouchedDemo`) AND the session frequency rule is met: first window open in the Inventor session always shows the dialog; subsequently every 20th open of the add-in window. The session counter (`_demoWindowOpenCount`) is in-memory only — never persisted.
 - **Reset re-arms the warning:** `ResetToDefaults()` restores the factory demo presets, so it also clears the session flags (`_demoShownThisSession = false`, `_demoWindowOpenCount = 0`). The warning then reappears on the **next window open within the same Inventor session**; without this clear, the static "shown this session" flag would suppress it until the 20th open.
 - **InfoDialog spec:** `contextKey = "DemoWarning"`, `titleKey = "Dlg_DemoWarning_Title"`, default size 440 × 300, no Cancel button. `Owner = CheckupWindow`. Opened via `ShowDialog()` — modal to CheckupWindow. Z-order: stays above Inventor via the Owner chain (CheckupWindow's Owner is Inventor's HWND). `Topmost = false` per §5.11.
 - **Dismissal condition:** The dialog permanently stops appearing once at least one preset has `IsDemo == false` (i.e., the user has saved a preset with both a new name and new field keys).
@@ -375,23 +386,25 @@ Both events are subscribed simultaneously; both route through the existing 80 ms
 - Edit box opens **empty** in multi-select — forces the user to type an explicit new value (no pre-filling from first selected doc).
 - **Apply:** loops over `_selectedDocs`; writes the same value to each; collects any per-doc exceptions; shows one consolidated `MessageBox` with all errors after all writes are attempted.
 - **Scope:** IPT parts only. No batch write across assemblies (IAM) or drawing sheets (IDW).
-- **Style Purge:** remains single-doc only — does not batch across `_selectedDocs`.
+- **Rule Buttons stay enabled in multi-select:** a rule always starts on the active document, independent of the selection (§5.6). A rule that should act on the selected objects reads the selection itself (e.g. the shipped `Purge Styles Selection` rule).
 
 ### 5.3 Presets
 
-Three named preset buttons stored in `Checkup_Settings.json`. Default names: Part (German: "Bauteil"), Assembly (German: "Baugruppe"), and a third user-configurable preset. Names and row layouts are fully user-configurable.
+A dynamic list of **1–12** named presets (T47, decisions D1–D15 in §10.5). Each preset has a stable **ID** (`PresetData.Id`) and a user label (`Name`) — both persisted. Names and row layouts are fully user-configurable.
 
-- Button order left→right: Preset 1 (sheet metal part fields by default), Preset 2 (assembly fields by default), Preset 3 (user-defined).
+- **Factory state / Reset:** the list from `Checkup_Settings.json → Presets` — shipped: one **"Demo"** preset (fixed ID `demo`); a CAD administrator may put 1–12 company presets there (IDs optional; missing ones become `default-<position>`, stable across window opens). The first preset becomes active. Emergency fallback (settings file missing/unreadable): one empty "Demo".
+- Button order left→right = list order (user-reorderable by drag-and-drop, §5.1).
 - Exact field lists are maintained in `Checkup_Settings.json` and change over time — do not hardcode field counts here.
-- Fresh window / Reset loads Preset 1; falls back to an empty row layout if presets are missing.
-- `PresetsManager` handles load/save/reset; `UiStateStore` remembers active preset index.
+- **Storage:** `HKCU\Software\Checkup 20xx\Presets` (REG_SZ, JSON list of {Id, Name, FieldKeys, IsDemo}); active preset remembered **by ID** in `ActivePresetId` (REG_SZ). `PresetsManager` validates on load (1–12 entries, missing/duplicate IDs regenerated) and persists any fix immediately.
+- **Migration (pre-T47 data):** a registry list of exactly 3 entries without IDs → three untouched demo presets collapse to one "Demo", otherwise all three are kept with new IDs; the old `ActivePresetIndex` DWORD is mapped once onto `ActivePresetId` and deleted.
+- All list rules (validation, migration, copy naming, reorder, import/export matching, multi-import) are static methods of `PresetsManager`, unit-tested in `Tests/PresetBarTests.cs`. Layout: `Views/PresetBarPanels.cs`.
 
 **Active preset indicator — Option C (border + background tint):**
 
 - **Active:** 1 px border in `CheckupPresetActiveBorder` (`#0696D7` accent blue) + `CheckupPresetActiveBackground` (10% alpha blue tint) as button background.
 - **Inactive:** no border (transparent), button background = `CheckupBackground` — the button surface blends into the window panel. Button shape still visible from the 1 px border frame present at all times (color switches, thickness stays).
 - Text/label unchanged in both states.
-- Implemented via `DataTrigger` on `IsPreset1/2/3Active` in the button `ControlTemplate` — inline `Border` wrapping a `TextBlock`.
+- Implemented via `DataTrigger` on `PresetButtonVm.IsActive` in the shared button `ControlTemplate` — inline `Border` wrapping a `TextBlock`. The More Button uses the same visual (`IsActivePresetHidden`) while it stands in for a hidden active preset; the More dropdown entry of the active preset too.
 - The old `Ellipse` dot indicator is removed.
 - **Theme tokens:** `CheckupPresetActiveBackground` (Dark `#1A0696D7`, Light `#140696D7`) and `CheckupPresetActiveBorder` (both themes `#0696D7`) defined in `DarkTheme.xaml` / `LightTheme.xaml`.
 
@@ -417,7 +430,6 @@ Three named preset buttons stored in `Checkup_Settings.json`. Default names: Par
 | `CheckupButtonBackground` | `#2E3645` | `#E8E8E8` | Standard button surface |
 | `CheckupButtonBorder` | `#4A5570` | `#C0C0C0` | Standard button border |
 | `CheckupButtonForeground` | `#F5F5F5` | `#000000` | Button label text |
-| `CheckupSpecialButtonBackground` | `#3D2A14` | `#FFEBD2` | Style Purger button (amber tint) |
 | `CheckupDestructiveButtonBackground` | `#3D1820` | `#FFD2D2` | Reset button (red tint) |
 | `CheckupApplyButtonBackground` | `#1A3A5C` | `#DCEBFF` | Apply/OK button (blue tint) |
 | `CheckupCancelButtonBackground` | `#3D1820` | `#FFD2D2` | Cancel/Close button (red tint) |
@@ -516,20 +528,51 @@ Every UI string uses `{DynamicResource KeyName}` — never a literal string. Swi
 - In C# code use `LanguageLoader.Get("KeyName")`.
 - Never hardcode a display string in XAML or C#.
 
-### 5.6 Style Purger
+### 5.6 Run iLogic Rule (Rule Buttons) — T46
 
-Triggered by the "Stile Bereinigen" (Clean Styles) button.
+Any Row can host a **Rule Button** that runs an iLogic rule on a single left-click. Replaces the former hardcoded **Style Purger** (Bottom bar button + `StylePurger.cs` + `StylePurge` settings section — all removed in T46); the purge logic now ships as ordinary iLogic rules. Design decisions D1–D22: §10.4.
 
-- Config in `Checkup_Settings.json` → `StylePurgeSection`.
-- **IDW:** update → copy template resources → delete obsolete symbols → fix dimension alignment → loop purge until stable.
-- **IPT/IAM:** capped 8-pass early-exit loop across all style collections.
-- **Never auto-saves** the document — user saves manually after review.
-- Template path: `V:\CAD\INV\Templates\Standard.idw` (deploy value).
-- Matching iLogic VB file: `Bereinigen IDW+IPT+IAM.iLogicVb` — must be kept in sync with `StylePurger.cs`.
+**Adding / assigning.** Field Selector → `S: Run iLogic Rule` (first Special Functions entry) → the Row becomes a **Rule Row** with an empty Rule Button labelled **"Right Click to Set iLogic Rule"** (red, `CheckupErrorText`; left-click does nothing). **Right-click** on the Rule Button (always, in any state) opens the **Rule Selector**; picking an entry assigns that rule (replacing any previous one). The Field Selector label of a Rule Row stays `S: Run iLogic Rule`.
 
-### 5.7 IZ Spezis Baukasten — ⚠ Legacy (Replaced by Logics-Constructor)
+**Rule Button look.** Fills the whole Value Field; styled like the `ƒx` toggle (`CheckupButtonBackground` / `CheckupButtonBorder`, hover opacity 0.85, pressed 0.6, engaged look while running) with the Value Field font size (`CheckupBaseFontSize`). Label = rule name (file name for rule files). Single line, never wraps, ellipsis when too long. Tooltip = rule (relative path) + "Rule starts on: `<active document>`".
 
-> **⚠ Removed — historical only.** All Spezi/Halbzeug hardcoded code was removed from both projects (Task #29) — including the backward-compat resolver paths that earlier revisions kept. **No legacy resolver code remains.** Old presets referencing these keys degrade to greyed/strikethrough missing-field rows. New development uses Logics-Constructor groups (`SPECIAL:LOGIC:`) exclusively. No new hardcoded `SPECIAL:` functions shall be added — the correct path is always composable cards.
+| State | Look | Left-click | Right-click |
+|---|---|---|---|
+| Empty | red hint text | nothing | Rule Selector |
+| Set | rule name | runs the rule | Rule Selector |
+| Missing (file gone / folder not configured here / Document Rule not in the active document) | greyed + italic + strikethrough | re-checks presence; runs if the rule is back, else nothing | Rule Selector |
+| No document open | disabled (50 % opacity) | — | — |
+
+**Rule Selector.** Popup below the button (§5.13 rules), search box (case-insensitive contains-match, ESC closes), groups in this order, entries in natural order:
+1. **Document Rules** of the active document (DE "Dokumentregeln"); deactivated rules greyed + not selectable.
+2. One group per folder of Inventor's **External Rule Directories** (iLogic Configuration, configured order); sub-folders with rules get their own group; label = folder name, `Parent\Folder` when two groups share a name.
+3. **Checkup** — the add-in's own `Rules\` folder next to the DLL (shipped template rules).
+Rule files = `.iLogicVb`, `.vb`, `.txt`. iLogic not loaded / nothing found → a single greyed hint instead of groups.
+
+**Running.** The rule is handed to iLogic with the **active document** (`RunExternalRule` with the full file path / `RunRule` for Document Rules) — the same as running it from Inventor's iLogic browser; never the Source Object. Inside the rule `ThisDoc` / `ThisApplication.ActiveDocument` behave as in Inventor; child documents and the selection (`SelectSet`) are the rule's own business — the add-in never touches the selection. **Verified 2026-09-29:** with a part edited in place inside an assembly, the rule acts on that part, exactly as in Inventor. Rule Buttons stay enabled in multi-select. Errors raised inside a rule appear in iLogic's own error dialog; the status bar shows "Rule '`<name>`' run." or the failure text. Afterwards: catalog cache + refresh cache invalidated, full `DoRefresh`.
+
+**Path containment (audit fix 2026-10-01).** A file rule's relative path from the Field Key is resolved by `ILogicRuleService.ContainedRulePath`: rooted paths, paths escaping the rule folder (`..\`) and non-rule extensions are rejected — the Rule Button then shows as missing. Field Keys travel in preset files that users share between machines, so a key must never point a Rule Button at a file outside the External Rule Directories or the add-in's `Rules\` folder.
+
+**Click guards.** The run is synchronous on the UI thread. A run-in-progress flag (released at `DispatcherPriority.ApplicationIdle`) drops clicks queued during the run, and clicks within the system double-click time (`GetDoubleClickTime`) after a run are ignored — a fast double-click runs the rule **once** (verified).
+
+**Presence freshness.** Rule files are re-checked on every refresh (`File.Exists`, cheap), so a restored file un-greys by itself; Document Rules (a COM call) are cached per full refresh and re-checked when the Rule Selector opens and on every click.
+
+**Access.** iLogic automation object via `ApplicationAddIns.ItemById("{3BDD8D79-2179-4B11-8A5A-257B1C0263AC}").Automation`, **late-bound** with `Interaction.CallByName` (no iLogic assembly reference; identical in 2024–2027).
+
+**Never auto-save.** The add-in never calls `doc.Save()`. A rule that saves is its author's responsibility.
+
+**Shipped template rules** (`Rules\` in all four variants; single source `CheckupAddin2026\CheckupAddin2026\Rules\`, linked by 2024/2025/2027; packed by `build_release.ps1`):
+
+| Rule | Behaviour |
+|---|---|
+| `Bereinigen IDW+IPT+IAM.iLogicVb` | The former Style Purger logic, unchanged (comments translated to English). Purges the **active document** only. **IDW:** update → copy borders / title blocks / sketched symbols from the template → delete obsolete symbols → dimension text alignment centered → loop purge until stable. **IPT/IAM:** capped 8-pass early-exit loop across all style collections (active lighting / render / sheet-metal styles are switched away, updated and restored, because Inventor locks them). |
+| `Purge Styles Selection IDW+IPT+IAM.iLogicVb` | Assembly open **with a selection**: purges every selected object — a selected part (any depth) → that part; a selected sub-assembly → it **plus all levels below**. Each file once, lowest level first; read-only / library / Content Center files skipped and counted; summary dialog at the end. Assembly without selection, part or drawing open → exactly the original behaviour. Contains a copy of the purge functions (iLogic rules cannot share code — keep both files in sync). English comments + messages. |
+
+Both rules carry a **CONFIGURATION** block (template path, border / title-block / sketched-symbol names). The shipped rules are **templates**: an add-in update overwrites `Rules\`, so copy a rule into your own iLogic rule folder and adapt its configuration there. ⚠ Before a public release the company-specific configuration values are replaced by neutral placeholders.
+
+### 5.7 Spezis Baukasten — ⚠ Legacy (Replaced by Logics-Constructor)
+
+> **⚠ Removed — historical only.** All Spezi/Halbzeug hardcoded code was removed from both projects (Task #29) — including the backward-compat resolver paths that earlier revisions kept. **No legacy resolver code remains.** Old presets referencing these keys degrade to greyed/strikethrough missing-field rows. New development uses Logics-Constructor groups (`SPECIAL:LOGIC:`) exclusively. No new hardcoded `SPECIAL:` functions shall be added — the correct path is always composable cards. (Sole exception, T46: the `SPECIAL:RULE:` **action** entry "Run iLogic Rule" — it derives no value and runs user-owned iLogic; see §5.6.)
 >
 > Full historical documentation (former field keys, picker window, CSV catalog, Halbzeug pair, sync behavior) is in **Appendix B**.
 
@@ -586,9 +629,9 @@ private static bool IsUncPath(string path)
 | Path                | Detected as | Reason                            |
 |---------------------|-------------|-----------------------------------|
 | `\\server\share\file` | Network     | `StartsWith(@"\\")`                 |
-| `V:\CAD\Inventor\...` | Network     | `DriveType.Network`                 |
+| `Z:\Shared\CAD\...`  | Network     | `DriveType.Network`                 |
 | `C:\Users\...`        | Local       | `DriveType.Fixed`                   |
-| `V:\` (disconnected)  | Local       | `DriveInfo` throws → caught → false |
+| `Z:\` (disconnected)  | Local       | `DriveInfo` throws → caught → false |
 
 **Accepted limitation:** a distribution file manually copied to a local drive is treated as local — correct behavior (it is the user's local copy).
 
@@ -671,7 +714,7 @@ The file name written to disk is derived from the user-visible catalog / capabil
 | Max 60 chars                                                                | ✓ truncated, trimmed                  |
 | Fallback when result is empty                                               | ✓ uses `Id`                           |
 
-The user-visible **name** (shown in the list) is unaffected — only the derived filename is sanitized. A catalog called `"IZ Spezis (2026)"` might be saved as `IZ_Spezis_2026.catalog.json`.
+The user-visible **name** (shown in the list) is unaffected — only the derived filename is sanitized. A catalog called `"Parts Catalog (2026)"` might be saved as `Parts_Catalog_2026.catalog.json`.
 
 **Delete behavior vs. lock:**
 
@@ -1053,7 +1096,8 @@ Both the main window and the Logics-Constructor window have a dedicated **Info**
 **InfoDialog architecture:**
 - `InfoDialog.xaml`: `ContentControl x:Name="InfoContent"` inside the `ScrollViewer` — accepts any `UIElement` as content; text reflows with window resize because `TextWrapping=Wrap` is set per `TextBlock`
 - `InfoDialog.xaml.cs`: two constructors — `InfoDialog(UIElement content, …)` (primary) and `InfoDialog(string text, …)` (delegates to primary via `MakeTextBlock()` helper; kept for backward compatibility)
-- Window size is persisted via `UiStateStore.TryLoadInfoDialogSize` / `SaveInfoDialogSize` using the `contextKey`; default size is only used on first open or after stored size was cleared
+- Window size is persisted via `UiStateStore.TryLoadInfoDialogSize` / `SaveInfoDialogSize` using the `contextKey`; default size is only used on first open or after stored size was cleared (Reset clears all `InfoDialog_*` values — §5.11)
+- Always opened with its parent window as `Owner` → appears above that window, centered on it (§5.11); position is never remembered
 
 **InfoPanelBuilder** (`Services/InfoPanelBuilder.cs`, identical in both projects):
 - Static class; three public methods: `BuildMainWindowHelp()`, `BuildRoleHelp()`, `BuildCardHelp()`
@@ -1259,7 +1303,7 @@ When an Expert BL auto-evaluation produces a value different from what is curren
 
 - Build always creates `bin\Catalogs\` and `bin\Capabilities\` if they do not exist.
 - Uses `Condition="!Exists(...)"` — **never overwrites files already in those folders**.
-- Files with `CopyToOutputDirectory=PreserveNewest` in the `.csproj` are copied there on every build (e.g. `IZ_Spezis_Baukasten.capability.json`).
+- Files with `CopyToOutputDirectory=PreserveNewest` in the `.csproj` are copied there on every build (e.g. `Demo.capability.json`).
 
 **Dev phase (current):**
 
@@ -1290,16 +1334,20 @@ Applies to all add-in windows: **CheckupWindow**, **CatalogBuilderWindow**, **Ca
 
 - Storage: `HKCU\Software\Checkup 2026\` (or `\Checkup 2024\` for the 2024 project).
 - Standard Windows user rights — no elevated permissions required.
-- Managed by `UiStateStore`; one registry value per dimension per window (e.g. `CheckupWindowWidth`, `CheckupWindowHeight`).
+- Managed by `UiStateStore`; one registry value per dimension per window (e.g. `WindowWidth`, `WindowHeight`, `CatalogBuilderWidth`, `InfoDialog_<contextKey>_Width`).
 - On load: reads stored size and applies it; falls back to factory size if no value found.
+- Remembered sizes (all cleared by Reset): main window, Field Selector dropdown, Logics-Constructor, catalog column widths, Catalog Picker, Logic-row dropdowns (`LogicDropdown_<ctx>_*`), and every `InfoDialog` context (`MainAddin`, `RoleHelp`, `CardHelp`, confirm dialogs), `PresetPicker`, `PresetConflict`. Not remembered: `InputDialog` (fixed width, height fits content).
 
-**Reset behavior:** Resets the window to the factory (code-defined) size. Clears the stored registry values so the next launch also starts at the factory size.
+**Reset behavior (T48):** `UiStateStore.ClearWindowSizes()` deletes every remembered size and position **by value-name prefix** (`Window`, `FieldSelectorPopup`, `CatalogBuilderWidth/Height/Placement`, `CatalogPickerWidth/Height`, `InfoDialog_`, `LogicDropdown_`) plus the `ColWidths` sub-key — a hand-maintained list missed new dialogs (pre-T48 bug: the Logics-Constructor ℹ windows were never reset). The open main window is set back to normal state, factory size, and **centered on the monitor Inventor is on**; all other windows get factory size/centering on their next open. Non-size UI state (last catalog tab, collapsed panels, pinned fields, view mode) is handled by its own reset rules, not by this method.
 
-**Startup position:**
+**Startup position (T48 — remembered placement):**
 
-- Window always opens centered on the same monitor that Inventor's main window is on.
-- Determined at startup by reading Inventor's window position to identify the target monitor, then centering the add-in window on that monitor.
-- `WindowStartupLocation` is NOT set to `CenterScreen` (which would use the primary monitor) — centering is calculated and applied manually.
+- **Main window + Logics-Constructor** remember their last placement — monitor, position, size — as a hard-coded standard (no setting, no toggle). Captured on close via Win32 `GetWindowPlacement` (restore bounds in physical pixels, multi-monitor and DPI safe) and stored as one string value (`WindowPlacement`, `CatalogBuilderPlacement`: `left,top,right,bottom,maximized`). Restored in `OnSourceInitialized` via `SetWindowPlacement` (before the window becomes visible → no jump).
+- **Maximized state:** the Logics-Constructor reopens maximized if it was closed maximized. The main window never reopens maximized (side panel) — it reopens at its restore bounds. Minimized is never restored.
+- **Validation:** a stored placement is used only if the title-bar strip is still on a connected monitor (`MonitorFromPoint`, `MONITOR_DEFAULTTONULL`, left and right end of the title strip — at least one must hit). Otherwise (monitor removed, laptop undocked, resolution change) → factory behavior below.
+- **Factory behavior** (first open, after Reset, or invalid placement): main window `WindowStartupLocation="CenterScreen"` — with the Inventor main frame as interop owner, WPF centers it on **Inventor's monitor**; Logics-Constructor `CenterOwner` (centered over the main window). When a valid placement exists, `WindowStartupLocation` is switched to `Manual` before `Show()`.
+- **Only Reset re-centers.** There is no other way to switch back to centered; moving the window simply becomes the new remembered placement.
+- **Dialogs never remember a position.** Every Info window and child dialog (`InfoDialog`, `InputDialog`, `PresetPickerDialog`, `PresetConflictDialog`, `CatalogPickerWindow`, message boxes) has its add-in parent window as `Owner` and opens `CenterOwner` — above its parent, centered on where that parent currently is. (T48 fixed two ownerless cases: the main-window ℹ Info dialog and the three "Write failed" message boxes in `CheckupViewModel`, via `CheckupViewModel.DialogOwner`.)
 
 **Always-on-top behavior:**
 
@@ -1357,7 +1405,7 @@ Applies to all add-in windows: **CheckupWindow**, **CatalogBuilderWindow**, **Ca
 
 **Tab switch behavior:** Rebuilds visible items from `_allItems` filtered by the active tab. In multi-select mode, previously checked items are re-applied via `_selectedPriValuesSet` so selections survive tab switches.
 
-**Multi-tab membership (Task #40 — planned, not yet implemented):** A value row may belong to several tabs by listing comma-separated tab names in its TAB-role cell; the picker splits on comma and lists the row under each named tab (the item filter becomes `item.TabIds.Contains(activeTab)`). Single-value cells are unaffected — the feature is opt-in and backward-compatible. Full design in §10.1.
+**Multi-tab membership (Task #40 — released in v0.15.0):** A value row may belong to several tabs by listing comma-separated tab names in its TAB-role cell; the picker splits on comma and lists the row under each named tab (the item filter becomes `item.TabIds.Contains(activeTab)`). Single-value cells are unaffected — the feature is opt-in and backward-compatible. Full design in §10.1.
 
 **Size persistence:** Window size saved to / restored from registry via `UiStateStore.TryLoadCatalogPickerSize` / `SaveCatalogPickerSize`. Default: 480 × 520 px.
 
@@ -1563,7 +1611,7 @@ Inventor lets text iProperties and parameters be **formula-driven**: an iPropert
 
 - **MVVM strict (CheckupWindow only):** `CheckupWindow.xaml` code-behind is limited to drag-and-drop row reordering and right-click copy-to-clipboard — all other logic lives in the ViewModel. `CatalogBuilderWindow` intentionally has extensive code-behind (DataGrid dynamic column building, programmatic context menus, keyboard handling) because WPF DataGrid dynamic column management cannot be done cleanly in pure MVVM. This is a deliberate and documented exception, not a violation of the pattern.
 - **COM late-binding for SheetMetal:** `CallByName()` used for `FlangeFeature` sub-objects to avoid hard version binding. Catch `Exception` broadly.
-- **Never auto-save:** StylePurger and all write operations never call `doc.Save()`. User saves manually. This was explicitly enforced after early versions auto-saved.
+- **Never auto-save:** all write operations and Rule Button runs never call `doc.Save()`. User saves manually. This was explicitly enforced after early versions (then in the Style Purger) auto-saved. A rule that saves itself is its author's responsibility.
 - **Single-process hosting:** add-in runs inside Inventor's process. WPF resources from Inventor's app-level resource dictionary can conflict — use explicit ControlTemplates with TemplateBinding instead of relying on default Button/ComboBox rendering.
 - **SPECIAL:LOGIC: isolation:** formula and card logic runs only on these rows. Intercepting normal PARAM:/UDEF:/IPROP: rows is explicitly prohibited ("absolutely prohibited and intransparent to user").
 
@@ -1582,7 +1630,7 @@ All add-in windows must look and feel like one cohesive product. This applies to
 - **Alternating rows:** all list/grid views use the same `AlternationIndex` DataTrigger pattern with `CheckupRowBackground0` / `CheckupRowBackground1`.
 - **Row separators:** all scrollable item lists use a 1 px dotted `CheckupSeparator` line between items (see §5.13 implementation pattern).
 - **Scrollbars:** all windows use the 8 px thin modern scrollbar defined in the theme dictionaries (see §5.15). Never add per-control scrollbar overrides — the implicit theme style covers all instances.
-- **Toggle-type button active state (Option C):** all toggle-type buttons (preset buttons, Logics-Constructor tab buttons, and any future on/off toggle in the add-in) use the same visual language: inactive = button background matches panel background (dissolves in); active = 1 px `CheckupPresetActiveBorder` border + `CheckupPresetActiveBackground` subtle tint. Text and label unchanged in both states. This is the standard for the entire add-in — do not invent per-feature active state visuals.
+- **Toggle-type button active state (Option C):** all toggle-type buttons (preset buttons incl. the More Button while it stands in for a hidden active preset, Logics-Constructor tab buttons, and any future on/off toggle in the add-in) use the same visual language: inactive = button background matches panel background (dissolves in); active = 1 px `CheckupPresetActiveBorder` border + `CheckupPresetActiveBackground` subtle tint. Text and label unchanged in both states. This is the standard for the entire add-in — do not invent per-feature active state visuals.
 
 **Enforcement:** shared `ResourceDictionary` files merged into every window via `ThemeLoader.ApplyTo(window)`. Any new window must call `ThemeLoader.ApplyTo()` before being shown. Any new control style must be added to the shared dictionaries, not defined locally in one window's XAML.
 
@@ -1592,7 +1640,7 @@ All add-in windows must look and feel like one cohesive product. This applies to
 
 The Spezi/Halbzeug system is fully replaced by the Logics-Constructor. All code was removed. The following decisions are permanent guardrails — do not reverse them.
 
-- **Never re-add hardcoded `SPECIAL:` entries to `FieldCatalogBuilder`** — the only allowed SPECIAL: entries are `LOGIC:` groups. The former hardcoded keys (`MiterGap`, `FlangeDistance`, `Spezi1/2`, `HalbzeugName/Ident`) and their resolver paths were fully removed (Task #29) and must not be re-added without explicit user approval.
+- **Never re-add hardcoded `SPECIAL:` value entries to `FieldCatalogBuilder`** — the only allowed SPECIAL: entries are `LOGIC:` groups plus the single built-in `RULE:` action entry "Run iLogic Rule" (T46, user-approved 2026-09-29; derives no value). The former hardcoded keys (`MiterGap`, `FlangeDistance`, `Spezi1/2`, `HalbzeugName/Ident`) and their resolver paths were fully removed (Task #29) and must not be re-added without explicit user approval.
 - **Never implement a monolithic "Spezi Card"** — the composable bricks approach (individual cards combined) was chosen explicitly after a monolithic approach was proposed and fully reverted.
 - **CSV catalog (`Spezi_Katalog.csv`)** — superseded by CatalogStore JSON (catalog ID `spezi001`). CSV is a one-time import seed only.
 
@@ -1768,7 +1816,7 @@ NuGet build failure (MSB4018): delete `obj\project.assets.json` + `obj\project.n
 **Post-build targets:**
 
 - `CreateDevSubfolders` (`AfterTargets="Build"`): creates `bin\Catalogs\` and `bin\Capabilities\` with `Condition="!Exists(...)"` — idempotent, never deletes or overwrites existing files. Ensures a developer can drop test files into these folders once and they survive all subsequent builds.
-- Files declared `<None Update … CopyToOutputDirectory="PreserveNewest">` in `.csproj` are copied flat into `bin\` (e.g. `IZ_Spezis_Baukasten.capability.json` → `bin\Capabilities\`). See the `<TargetPath>` element in `.csproj` for the exact destination path.
+- Files declared `<None Update … CopyToOutputDirectory="PreserveNewest">` in `.csproj` are copied flat into `bin\` (e.g. `Demo.capability.json` → `bin\Capabilities\`). See the `<TargetPath>` element in `.csproj` for the exact destination path.
 
 **Design Harness build** (see §7.7; included in release bundles since v0.13.x):
 ```
@@ -1889,17 +1937,17 @@ Agreed terms — use these in all conversations to avoid ambiguity.
 
 | Term                | Description                                                                                                                                                                                                                                                                                                                  | Code identifiers                                                                         |
 |---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------|
-| **Field Selector**      | ComboBox column (right side of each Row); auto-widths to longest label; user-draggable; double-click border resets width; pinned top items (Add/Remove Row + Logics-Constructor specials); scrollable grouped+natural-sorted field list below; missing fields shown greyed+strikethrough; Special Functions prefixed `S:` (red) | `FieldKey`, `FieldItem`, `FieldCatalog`, `FieldCatalogBuilder`                                   |
-| **Value Field**         | The UI cell spanning from Drag Handle to Field Selector; shows read value; single left-click enters inline edit (full-width frame); can host a Dropdown and/or an Action Button at the far right                                                                                                                             | `DisplayValue`, `EditText`, `AllowedValues`, `IsInlineEditing`                                   |
+| **Field Selector**      | ComboBox column (right side of each Row); auto-widths to longest label; user-draggable; double-click border resets width; pinned top items (Add/Remove Row + Logics-Constructor specials); scrollable grouped+natural-sorted field list below (Special Functions group starts with `S: Run iLogic Rule`); missing fields shown greyed+strikethrough; Special Functions prefixed `S:` (red) | `FieldKey`, `FieldItem`, `FieldCatalog`, `FieldCatalogBuilder`                                   |
+| **Value Field**         | The UI cell spanning from Drag Handle to Field Selector; shows read value; single left-click enters inline edit (full-width frame); can host a Dropdown and/or an Action Button at the far right; on a Rule Row it is one full-width Rule Button instead                                                                                                                             | `DisplayValue`, `EditText`, `AllowedValues`, `IsInlineEditing`                                   |
 | **Row**                 | One Field Selector + Value Field pair                                                                                                                                                                                                                                                                                        | `RowModel`                                                                                 |
-| **Document Name Field** | Header bar element showing the active/selected document filename(s); auto-wraps and trims at 2 lines (Plain/Compact) or 5 lines (Detailed); full text on mouse-over tooltip; three view modes (Plain / Compact / Detailed) cycled via the View Mode button (label `S ⇄` / `C ⇄` / `D ⇄`) or left-click on the field itself; mode persisted in Registry; Reset returns to Plain | `FileName`, `FileNameViewModeLabel`, `FileNameMaxHeight`, `BuildFileName*()`, `GetTopLevelName()`, `_fileNameViewMode`, `CycleFileNameViewModeCommand` |
+| **Document Name Field** | Header bar element showing the active/selected document filename(s); auto-wraps and trims at 2 lines (Plain/Compact) or 5 lines (Detailed); full text on mouse-over tooltip; three view modes (Plain / Compact / Detailed) cycled via the View Mode button (label `S ⇄` / `C ⇄` / `D ⇄`) only; single right-click copies the shown text to the clipboard; mode persisted in Registry; Reset returns to Plain | `FileName`, `FileNameViewModeLabel`, `FileNameMaxHeight`, `BuildFileName*()`, `GetTopLevelName()`, `_fileNameViewMode`, `CycleFileNameViewModeCommand` |
 | **Field Catalog**       | Runtime-discovered set of all available fields                                                                                                                                                                                                                                                                               | `FieldCatalog`, `FieldCatalogBuilder`, `FieldItem`                                             |
 | **Source Object**       | The Inventor document(s) currently being read                                                                                                                                                                                                                                                                                | `DocumentResolver`, `_selectedDocs`                                                          |
-| **Presets**             | Named row-layout configurations                                                                                                                                                                                                                                                                                              | `PresetsManager`, `UiStateStore`                                                             |
+| **Presets**             | Named row-layout configurations (1–12, each with a stable Preset ID). Shown in the **Preset Bar** as **Preset Buttons**, followed by the **More Button** ("More ›", overflow) and the **Add Preset Button** ("+") | `PresetsManager`, `UiStateStore`, `PresetButtonVm`, `PresetBarPanel` / `PresetOverflowPanel` |
 | **Language System**     | Runtime language from Inventor locale; DE/EN JSON strings; DynamicResource                                                                                                                                                                                                                                                   | `LanguageLoader`, `Strings.*.json`                                                           |
 | **Theme System**        | Runtime dark/light following Inventor color scheme                                                                                                                                                                                                                                                                           | `ThemeLoader`, `DarkTheme.xaml`, `LightTheme.xaml`                                             |
-| **Special Fields**      | `SPECIAL:`-prefixed fields. The only valid one is `SPECIAL:LOGIC:` (Logics-Constructor group rows). **⚠ ALL hardcoded SPECIAL: fields REMOVED (Task #29):** `MiterGap`, `FlangeDistance`, `Spezi1`, `Spezi2`, `HalbzeugName`, `HalbzeugIdent` — all code paths (including resolvers and `SheetMetalReader`), XAML panels, and language keys removed from both projects. Logics-Constructor (`IZ_Spezis_Baukasten.capability.json`) is the replacement. For historical reference: these were computed or UDEF-backed hardcoded fields, replaced because the Logics-Constructor covers the same use cases with full user configurability. Old presets still referencing them degrade to greyed/strikethrough missing-field rows. | shown with "S:" tag                                                                      |
-| **Spezi Baukasten**     | ⚠ **REMOVED.** Was: catalog-backed Spezi1+Spezi2 pair with `SpeziBaukastenPickerWindow`, CSV-backed catalog. Replaced by Logics-Constructor capability set `IZ_Spezis_Baukasten.capability.json` + CatalogStore JSON. All code removed. `SpeziAutoCompleteItem.cs` and `SpeziSegment.cs` retained — they serve the MultiToken system (MultiPick card), not the legacy Spezi feature. | ~~`SpeziBaukastenCatalog`~~ ~~`SpeziBaukastenPickerWindow`~~ (removed)                   |
+| **Special Functions**   | `SPECIAL:`-prefixed Field Selector entries (UI group "Special Functions" / "Sonderfunktionen"; formerly called "Special Fields" in this TDD — renamed T46). Valid: `SPECIAL:LOGIC:` (Logics-Constructor group rows) and the built-in action `SPECIAL:RULE:` ("Run iLogic Rule", Rule Rows — T46). **⚠ ALL hardcoded SPECIAL: fields REMOVED (Task #29):** `MiterGap`, `FlangeDistance`, `Spezi1`, `Spezi2`, `HalbzeugName`, `HalbzeugIdent` — all code paths (including resolvers and `SheetMetalReader`), XAML panels, and language keys removed from both projects. The Logics-Constructor (capability sets) is the replacement. For historical reference: these were computed or UDEF-backed hardcoded fields, replaced because the Logics-Constructor covers the same use cases with full user configurability. Old presets still referencing them degrade to greyed/strikethrough missing-field rows. | shown with "S:" tag                                                                      |
+| **Spezi Baukasten**     | ⚠ **REMOVED.** Was: catalog-backed Spezi1+Spezi2 pair with `SpeziBaukastenPickerWindow`, CSV-backed catalog. Replaced by a Logics-Constructor capability set + CatalogStore JSON. All code removed. `SpeziAutoCompleteItem.cs` and `SpeziSegment.cs` retained — they serve the MultiToken system (MultiPick card), not the legacy Spezi feature. | ~~`SpeziBaukastenCatalog`~~ ~~`SpeziBaukastenPickerWindow`~~ (removed)                   |
 | **Picker Window**       | Full window (not popup) for browsing and selecting catalog entries — opened from a **Button card row** in the Logics-Constructor. The `SpeziBaukastenPickerWindow` variant is legacy (used by old `SPECIAL:Spezi1/2` rows).                                                                                                           | `SpeziBaukastenPickerWindow` (legacy), `CatalogPickerWindow` (Logics-Constructor)             |
 | **Logics-Constructor**   | Both the feature system (card-based logic for SPECIAL:LOGIC: rows) and the window used to configure it. German: *Logik Baukasten*. Older name "Logic Builder" is retired.                                                                                                                                                      | `CardEngine`, `CatalogStore`, `CapabilityStore`, `CatalogBuilderWindow`, `CatalogBuilderViewModel` |
 | **Catalog**             | Named table with columns + entries                                                                                                                                                                                                                                                                                           | `CatalogData`, `CatalogStore`                                                                |
@@ -1907,6 +1955,10 @@ Agreed terms — use these in all conversations to avoid ambiguity.
 | **Group**               | One logic unit inside a Capability Set; one S: entry in the Field Selector                                                                                                                                                                                                                                                   | `CardGroup`                                                                                |
 | **Card**                | One logic brick inside a Group; catalog-backed or formula-driven                                                                                                                                                                                                                                                             | `CapabilityCard`, `CardEngine`                                                                    |
 | **Basic Logic**         | Formula-driven function inside a Group; purely computational, no catalog needed                                                                                                                                                                                                                                              | `CapabilityCard { Type = "BasicLogic" }` (no dedicated class)                                                                          |
+| **iLogic Rule**         | An iLogic rule — either an **External Rule** (rule file in a folder: Inventor's External Rule Directories or the add-in's `Rules\` folder) or a **Document Rule** (stored inside an Inventor document) | `RuleSource`, `RuleKey`, `ILogicRuleService` |
+| **Rule Row**            | A Row whose Field Key starts with `SPECIAL:RULE:`; carries no value | `RowModel.IsRuleRow` |
+| **Rule Button**         | Full-width button in a Rule Row's Value Field; left-click runs the assigned iLogic Rule on the active document, right-click opens the Rule Selector | `RunRuleCommand`, `RowModel.RuleButtonText`, `IsRuleEmpty`, `IsRuleMissing` |
+| **Rule Selector**       | Popup opened by right-clicking a Rule Button; search box + iLogic Rules grouped by folder (Document Rules / rule folders / Checkup), natural order | `OpenRuleSelector`, `RuleSelectorGroups`, `RuleSelectorGroupVm`, `RuleSelectorItem` |
 
 ---
 
@@ -1918,14 +1970,15 @@ Agreed terms — use these in all conversations to avoid ambiguity.
 - Support multi-selection across IAM assemblies (IPT parts only — no batch write to IAM itself).
 - Catalog-driven field logic (Logics-Constructor) configurable without rebuilding.
 - ~~Specialty designation entry (Spezi Baukasten) with catalog-backed multi-value picker.~~ **⚠ Legacy** — replaced by Logics-Constructor capability set.
-- Style cleanup (Style Purger) for IDW/IPT/IAM documents.
+- Run any iLogic rule from a one-click Rule Button in a Row (T46); style cleanup for IDW/IPT/IAM ships as template iLogic rules.
 - Ribbon integration (Sheet Metal, 3D Model, Assemble, Drawing tabs).
 
 ### What the add-in deliberately does NOT do
 
 - It does not modify Inventor's native property dialogs or browser.
 - It does not access vault / PDM systems (Vault integration is a pending item, not yet implemented).
-- Style Purge does not auto-save — user must save manually.
+- Running a rule never auto-saves — user saves manually (a rule that saves itself is its author's choice).
+- It never modifies Inventor's iLogic configuration (External Rule Directories) — it only reads it.
 - Logics-Constructor runs only on `SPECIAL:LOGIC:` rows — never intercepts normal PARAM:/UDEF: rows.
 - Multi-select write covers IPT parts only — no batch write across assemblies or IDW sheets.
 
@@ -1936,12 +1989,16 @@ Agreed terms — use these in all conversations to avoid ambiguity.
 | ID | Area | Description | Status |
 |----|------|-------------|--------|
 | T1 | 2026 | Vault Professional integration — `VAULT:` field key prefix; enumerate loaded add-ins; late-bind or reference `VaultInventorServer.dll`; add a `Services/VaultReader.cs`; add `VAULT:*` keys to `FieldCatalogBuilder`; non-Vault files show `—`. | Optional — deferred indefinitely. |
-| T40 | shared | Multi-tab catalog membership — one value row appears under several picker tabs (comma-separated tab names in the TAB cell). Design decided (names + definition rows). See §10.1. | **Planned** — TDD done; code + Test_Spezifik data migration pending. |
-| T42 | shared | Compose Split Mode — expand packed material doubles and feature-axis stacks embedded inside a separator-delimited SPEZIFIK1 short form into a correct SPEZIFIK2 long form (D1/D2 material framing + positional feature-axis expansion). Extends the Compose card with 6 new params; requires two domain-specific sub-catalogs as adjustments. See §10.2. | **Code-complete + verified (Inventor 2026)** — commit deferred; folded with T43 to land the SPEZIFIK pipeline once. |
-| T43 | shared | Generation-scoped expansion + placing-order sort — fixes two correctness gaps in the SPEZIFIK1→2 expansion that T42 verification surfaced: a token **collision** (`fnnn`/`fpnn`/`nnnn` = Blech sheet-edge vs Paneel feature-axis), resolved by a new catalog **Generation** column + a short-derived generation scope filter; and output **order**, resolved by sorting the assembled long form on `placing_order`. One in-place rework of the `spezi-g1` expansion. See §10.3. | **DONE — implemented + Inventor-verified (2026-06-26)**; also canonicalizes the short form. 104 tests, build ×4 clean. Commit bundles T41+T42+T43. |
+| T40 | shared | Multi-tab catalog membership — one value row appears under several picker tabs (comma-separated tab names in the TAB cell). Design decided (names + definition rows). See §10.1. | **DONE — released in v0.15.0.** |
+| T42 | shared | Compose Split Mode — expand packed material doubles and feature-axis stacks embedded inside a separator-delimited SPEZIFIK1 short form into a correct SPEZIFIK2 long form (D1/D2 material framing + positional feature-axis expansion). Extends the Compose card with 6 new params; requires two domain-specific sub-catalogs as adjustments. See §10.2. | **DONE — released in v0.15.0** (together with T41 + T43). |
+| T43 | shared | Generation-scoped expansion + placing-order sort — fixes two correctness gaps in the SPEZIFIK1→2 expansion that T42 verification surfaced: a token **collision** (`fnnn`/`fpnn`/`nnnn` = Blech sheet-edge vs Paneel feature-axis), resolved by a new catalog **Generation** column + a short-derived generation scope filter; and output **order**, resolved by sorting the assembled long form on `placing_order`. One in-place rework of the `spezi-g1` expansion. See §10.3. | **DONE — implemented + Inventor-verified (2026-06-26)**; also canonicalizes the short form. 104 tests, build ×4 clean. Released in v0.15.0. |
 | T44 | shared | Logics-Constructor card-editor responsive layout — card fields **wrap** to the available width instead of clipping or forcing the giant outer horizontal scrollbar; each `label+field` pair is kept together (no orphaned labels); the whole field area (type controls **+** companion/partner picker) flows as one `WrapPanel`; each card has its own **horizontal** scrollbar that engages below a `MinWidth` floor (700 px) while the outer view keeps **vertical** scrolling; no per-card vertical scroll. XAML-only (shared `CatalogBuilderWindow.xaml`). See §5.8 (Card / Basic Logic row layout + Scrolling). | **DONE — implemented + Inventor-verified (2026-06-26)**; build ×4 clean. |
+| T45 | shared | Document Name Field click-target fine-tuning — the View Mode Cycle button is the only control that cycles S/C/D (click area = the visible button); the Document Name Field no longer cycles on left-click and instead copies its shown text to the clipboard on single right-click (same handler + full-width hit area as the Value Field). XAML-only (shared `CheckupWindow.xaml`) + Info-window text adjustments. See §5.1 (Header bar). | **DONE — implemented + Inventor-verified 2026 + 2024 (2026-09-29)**; build ×4 clean, 104 tests. Commit bundled with T46. |
+| T46 | shared | Style Purger removed → **Run iLogic Rule** — the hardcoded Style Purger (Bottom bar button, `StylePurger.cs`, `StylePurge` settings section) is removed entirely; replaced by a generic Special Function entry that places a **Rule Button** in any Row, which runs a user-chosen iLogic rule (external or document-stored) on a single left-click. Ships two demo rules (the original purge rule unchanged + a new selection-aware copy). See §10.4. | **DONE — implemented + Inventor-verified 2026 + 2024 (2026-09-29)**; build ×4 clean, 131 tests (net8 + net48); two verify-round fixes (missing-state refresh, double-click guard). As-built: §5.6. Commit bundles T45 + T46 + T47. |
+| T47 | shared | Preset Buttons visual rework — from 3 fixed, centred buttons to a **dynamic, left-aligned list of 1–12 Preset Buttons** with a square **"+"** (copy the active preset), **Delete** in the context menu, **drag-and-drop reorder**, a PatternFly-style **"More ›"** overflow button, and a stable per-preset **ID** (registry, settings file, export/import). Factory state = one "Demo" button. See §10.5. | **DONE — implemented + Inventor-verified 2026 + 2024 (2026-09-30)**, incl. D15 multi-import; build ×4 clean, 174 tests (net8 + net48). As-built: §5.1 / §5.3. Commit bundles T45 + T46 + T47; full code audit after T47. |
+| T48 | shared | Window placement + Reset coverage — main window and Logics-Constructor **remember their last monitor + position** (Logics-Constructor also its maximized state) as a hard-coded standard; only **Reset** re-centers on Inventor's monitor; Info windows and dialogs always open above and centered on their parent window; Reset clears **every** remembered window/dialog/dropdown size by prefix (fixes the never-reset Logics-Constructor ℹ windows). See §10.6 + §5.11. | **DONE — implemented + Inventor-verified (2026-10-01, verify checks 1–6)**; build ×4 clean, 217 tests (net8 + net48; 229 after the T45–T48 audit fixes). Commit bundles T45–T48. |
 
-### 10.1 Task #40 — Multi-tab catalog membership (planned)
+### 10.1 Task #40 — Multi-tab catalog membership (released in v0.15.0)
 
 **Goal.** Let a single catalog value row appear under multiple tabs in the Catalog Picker Window. Restores a capability the legacy hardcoded Special Functions had, now in the CardEngine model. Opt-in and backward-compatible: a TAB cell with no comma behaves exactly as today.
 
@@ -1967,7 +2024,7 @@ Agreed terms — use these in all conversations to avoid ambiguity.
 
 **Test_Spezifik migration (separate, one-time).** Translate each data row's legacy code CSV (`G1,G2…` in the Role-None `value_visibility_in_group_tab_id` column) into the tab names in the TAB column; keep the 9 header rows as definition rows; drop the visibility column + the `G1…G9` codes.
 
-### 10.2 Task #42 — Compose Split Mode (planned)
+### 10.2 Task #42 — Compose Split Mode (released in v0.15.0)
 
 **Goal.** When the user types a SPEZIFIK1 short form such as `100-pur-l5a1-fnpp-dvsp`, the add-in must produce a complete SPEZIFIK2 long form including the expansion of packed material doubles (`l5a1` → `D1 Edelstahl… / D2 PVC-w…`) and packed feature stacks (`fnpp` → `Feder links, angeschäumter Pfosten oben/unten`). Today PairTransform drops any token that has no direct catalog match, so packed codes are silently lost. This task introduces Split Mode on the existing Compose card to fill that gap.
 
@@ -2092,6 +2149,224 @@ Even though the user typed the tokens out of order, the output is canonical.
 
 **Bundling.** Lands with T41 + T42 in one commit (public parts only; `Assert-NoPrivateFiles` keeps all `Test_Spezifik` data out). The temporary T42 diagnostics (DiagLogger enable in `StandardAddInServer.cs` + the `"compose"` logging in `CheckupViewModel.cs`) are stripped in the same rebuild.
 
+### 10.4 Task #46 — Style Purger removed → Run iLogic Rule (IMPLEMENTED + Inventor-verified 2026-09-29)
+
+> **AS-BUILT (2026-09-29).** Implemented as specified below; the living description is **§5.6**. Deviations / additions found during the Inventor verify: (1) **D22 refined** — rule *files* are re-checked on every refresh (cheap `File.Exists`), only Document Rules are cached; a left-click on a greyed button re-checks first (a file renamed back no longer stays greyed). (2) **D21 extended** — besides the run-in-progress flag, clicks within the system double-click time after a run are ignored (a fast double-click ran a short rule twice). (3) **D7 in-place edit** — verified: with a part edited in place, the rule acts on that part (Inventor's own behaviour). (4) `build_release.ps1` packs `Rules\`. New code: `Services/RuleKey.cs`, `Services/ILogicRuleService.cs`, `Models/RuleSelectorGroupVm.cs`, `Tests/RunILogicRuleTests.cs`; `StylePurger.cs` deleted.
+
+**Goal.** Replace the one hardcoded, single-purpose Style Purger button with a generic mechanism: any Row can host a **Rule Button** that runs any iLogic rule the user picks. The former purge logic lives on as an ordinary iLogic rule shipped with the add-in. Behaviour follows Inventor's own iLogic run behaviour as closely as possible.
+
+**Vocabulary (new terms — added to §8 + Appendix A on completion).**
+
+| Term | Meaning |
+|---|---|
+| **iLogic Rule** | An iLogic rule — either an **External Rule** (a rule file in a folder) or a **Document Rule** (stored inside an Inventor document). |
+| **Rule Row** | A Row whose Field Key starts with `SPECIAL:RULE:`. |
+| **Rule Button** | The button that fills the Value Field of a Rule Row. Left-click runs the rule; right-click opens the Rule Selector. |
+| **Rule Selector** | The popup list opened by right-clicking a Rule Button; lists all discovered iLogic Rules. |
+
+Also: the TDD's "Special Fields" (§8, Appendix A) is renamed **Special Functions**, matching §5.1 and the UI label "Sonderfunktionen".
+
+**Decisions (user, 2026-09-29).**
+
+- **D1 — Removal.** Style Purger removed completely: Bottom bar button, `PurgeStylesCommand` / `DoPurgeStyles`, `StylePurger.cs`, `UserSettings.StylePurgeSection`, the `StylePurge` section of the shipped `Checkup_Settings.json`, its language keys and the `CheckupSpecialButtonBackground` theme key. One task (no split).
+- **D2 — Field Selector entry.** New entry **`S: Run iLogic Rule`** (DE: "iLogic-Regel ausführen") — always the **first** entry of the Special Functions group, above the Logics-Constructor groups (which keep their natural sort). Selecting it turns the Row into a Rule Row with an **empty** Rule Button. The entry can be added to any number of Rows; each Rule Row holds its own rule.
+- **D3 — Rule Button look.** Fills the **whole Value Field width** (Drag Handle → Field Selector). Visual style like the `ƒx` toggle (`CheckupButtonBackground` / `CheckupButtonBorder`, hover opacity 0.85, pressed 0.6), but font size = Value Field font (`CheckupBaseFontSize`). Label = rule name (file name for External Rules). **Single line, never wraps** — exception to the 2-line auto-flow of §5.1; too-long names are trimmed with an ellipsis; full name on the tooltip.
+- **D4 — Empty Rule Button.** Label **"Right Click to Set iLogic Rule"** (DE: "Rechtsklick: iLogic-Regel festlegen") in red (`CheckupErrorText`). Left-click does nothing.
+- **D5 — Right-click, always.** A single right-click on the Rule Button (empty, set or missing) opens the Rule Selector; picking an entry assigns that rule to the Row (replaces any previous one).
+- **D6 — Rule Selector contents.** External Rules **and** Document Rules, in groups, **natural alphabetical order** within each group (as §5.1). Group label = folder name. Popup follows the §5.13 dropdown rules and has the Field Selector's search box. Group order:
+  1. **Document Rules** of the active document (DE: "Dokumentregeln").
+  2. One group per folder of Inventor's **External Rule Directories** (iLogic Configuration), in Inventor's configured order; sub-folders containing rules get their own group. If two groups would share a folder name, the label shows `Parent\Folder`.
+  3. **Checkup** — the add-in's own `Rules\` folder next to the DLL (D9).
+- **D7 — Run target = the active document (Option B).** The rule is handed to iLogic with the **active document** — the same as running it from Inventor's iLogic browser — never the Source Object. Inside the rule `ThisDoc` / `ThisApplication.ActiveDocument` = the active document; processing child documents or the current selection (`SelectSet`) is the **rule's own job**. The add-in never changes Inventor's selection when a Rule Button is clicked. Consequences:
+  - Document Rules are listed from, and resolved against, the active document (not the selected component).
+  - The Rule Button stays **enabled in multi-select** (the target does not depend on the selection).
+  - Works with any active document type, including drawings (IDW).
+  - Tooltip names the start document: "Rule starts on: `<active document name>`" (a rule may go on to process other documents).
+  - In-place editing of a component (active document = assembly, edit document = part): **follow iLogic's own choice** — to be verified in Inventor during implementation and recorded here.
+- **D8 — Missing rule.** If the assigned rule is not present (file gone / folder not configured on this PC / Document Rule not in the active document): label greyed + strikethrough, like the other missing-field Rows; left-click does nothing; right-click still opens the Rule Selector. The Field Selector label stays `S: Run iLogic Rule`.
+- **D9 — Shipped rules folder (N1 = a).** The add-in scans its own `Rules\` folder (next to the DLL, all 4 variants) as an extra source. Inventor's iLogic configuration is **never modified**. Shipped rules are **templates**: an add-in update overwrites `Rules\`, so users copy a rule into their own rule folder before adapting it (stated in `Getting-Started.md`).
+- **D10 — Single left-click runs immediately (N2 = a).** No confirmation dialog. While a rule is running, the Rule Button ignores further clicks (no double run from a double-click).
+- **D11 — Bottom bar (N3 = b).** The left group becomes empty; the Preset buttons stay centred on the **window** centre and still never overlap the right group when the window is narrow.
+- **D12 — After a run.** `InvalidateRefreshCache()` then `DoRefresh()` (rules usually change values). Status message: "Rule '`<name>`' run" / failure text from the language files (no hardcoded strings, §5.5). Rule errors themselves are reported by iLogic's own error dialog, as in Inventor.
+- **D13 — Never auto-save** stays: the add-in never calls `doc.Save()`. A rule that saves is its author's responsibility.
+
+- **D14 — Deactivated Document Rules** (suppressed in iLogic) are listed **greyed and not selectable**, as in Inventor's iLogic browser.
+- **D15 — Rule files.** External Rules = files with the extensions iLogic accepts for external rules: `.iLogicVb`, `.vb`, `.txt`.
+- **D16 — Tooltip.** One tooltip combines the full rule name (incl. relative folder) and "Rule starts on: `<active document name>`" (D3 + D7).
+- **D17 — Value Field gestures on a Rule Row.** Left-click never enters inline edit (it runs the rule); right-click never copies to the clipboard (it opens the Rule Selector). No Dropdown, no Action Button, no `ƒx`.
+- **D18 — No value.** A Rule Row reads and writes no value: skipped by `BatchReadValues`, the refresh value cache, and all post-passes (Logic mismatch, PrefixSuffix, Expert BL, Sync, Link adjacency). It counts toward `MAX_ROWS`.
+- **D19 — Logics-Constructor isolation.** `SPECIAL:RULE:` never appears in any Logics-Constructor field picker (Target Field, card field pickers, formula references); a formula reference to it resolves to `""`.
+- **D20 — No document open.** Rule Button **disabled** (distinct from the D8 "missing" state).
+- **D21 — Queued clicks.** The rule runs synchronously on the UI (STA) thread, so clicks made during the run queue up; the "ignore while running" guard (D10) must also discard those queued clicks after the run returns.
+- **D22 — Missing-state freshness.** Presence is re-checked on every non-cached refresh and whenever the Rule Selector opens. A Document Rule added in the iLogic editor while the window is open appears on the next refresh (accepted).
+
+**Field Key.** Source-qualified so identical file names in different places stay distinct (needed by D9's "copy the template to your own folder" workflow):
+
+| Key | Meaning |
+|---|---|
+| `SPECIAL:RULE:` | Empty Rule Button |
+| `SPECIAL:RULE:EXT:<relative path>` | External Rule from Inventor's External Rule Directories; path relative to its rule directory incl. sub-folder + extension (e.g. `Purge\MyRule.iLogicVb`). Resolved across the directories in Inventor's configured order; first match wins (as iLogic itself resolves names). |
+| `SPECIAL:RULE:ADDIN:<relative path>` | Rule from the add-in's own `Rules\` folder (the "Checkup" group). |
+| `SPECIAL:RULE:DOC:<rule name>` | Document Rule, resolved against the active document. |
+
+The whole rule identity lives in the Field Key → **Presets (settings file + Registry) need no format change**; Rule Rows are saved/restored/imported like any Row. Any `SPECIAL:RULE:*` key maps to the `S: Run iLogic Rule` Field Selector entry. Red `S:` tag: `RowModel.IsSpecialRow` (`SPECIAL:` prefix) already covers it; **`FieldItem.IsSpecialEntry` (today `SPECIAL:LOGIC:` only) must be extended to `SPECIAL:RULE:`**.
+
+**Guardrail amendments (§4, §5.7, §6.4).** "The only valid `SPECIAL:` key is `LOGIC:`" / "no new hardcoded Special Functions" become: **derived values** remain Logics-Constructor-only (`SPECIAL:LOGIC:`); exactly one built-in **action** entry is allowed — `SPECIAL:RULE:` — because it computes no value and runs user-owned iLogic. §5.1 Special Functions auto-collapse rule: the group is never empty any more → the rule is dropped. `SPECIAL:LOGIC:` isolation (§6.1) is untouched: a Rule Row never intercepts other Rows.
+
+**iLogic access.** Through the iLogic add-in's automation object (`ApplicationAddIns.ItemById("{3BDD8D79-2179-4B11-8A5A-257B1C0263AC}").Automation`), **late-bound** (like `SheetMetalReader`; catch `Exception` broadly): External Rule Directories from its file options, Document Rules via its rule enumeration, runs via its run-external-rule / run-rule calls. iLogic add-in not loaded → Rule Selector shows a single greyed hint, Rule Buttons act as missing.
+
+**Demo rules (`Rules\`, shipped in all 4 variants).**
+
+1. `Bereinigen IDW+IPT+IAM.iLogicVb` — the existing rule, **unchanged** (currently a `<None Include>` of the 2026 + 2027 head projects; moves into the shipped `Rules\` folder). Its "keep in sync with `StylePurger.cs`" note becomes obsolete.
+2. **`Purge Styles Selection IDW+IPT+IAM.iLogicVb`** — new selection-aware copy — same cleaning functions (full copy; iLogic rules cannot share code — both files need future cleaning-logic changes):
+   - Assembly open **with a selection**: cleans every selected object. A selected **part** (at any depth) → that part; a selected **sub-assembly** → the sub-assembly **plus all levels below it** (nested sub-assemblies and their parts).
+   - Each document is cleaned **once** (deduplicated by file), lowest level first.
+   - Read-only, Content Center and library documents are **skipped and counted**.
+   - Assembly open **without a selection**, or a part / drawing open: exactly the **original behaviour** (only the active document).
+   - One summary at the end (counts cleaned per type + skipped). Never saves.
+   - Must satisfy the iLogic VB syntax constraints (no module-level declarations, no access modifiers, `Sub Main` first, multi-line Try/Catch, `vbCrLf`).
+- **Comments in both rule files are English only** (the original's comments are translated — code and messages unchanged, behaviour identical). The new rule's messages are English too (English-first rule).
+- **No shipped preset contains a Rule Row** (user decision 2026-09-29): the release rules carry placeholder paths and a single click runs immediately — risky for first-time users. Discoverability = the first Special Functions entry + `Getting-Started.md`.
+- **Neutral configuration (done 2026-10-01):** both shipped rules carry an empty CONFIGURATION block (empty template path = nothing copied; empty border / title-block / sketched-symbol lists) with example comments — no company paths or names ship. `Getting-Started.md` tells users to edit the rule's configuration block to their own paths when deploying.
+
+**Settings compatibility.** Old `Checkup_Settings.json` files with a `StylePurge` section keep loading (unknown properties are ignored by both JSON libraries — precedent `SharedRootPath`). `UserSettings.NormalizeWindowsPaths` is **kept** (old files still carry a single-backslash `TemplateFilePath`). Guard test: a settings file with a legacy `StylePurge` section (incl. single backslashes) still loads its presets (§ legacy-removal rule: graceful degradation).
+
+**Code changes (rebuild required).**
+
+- Remove: `StylePurger.cs` (+ `.projitems` entry), `PurgeStylesCommand` / `DoPurgeStyles` / `_stylePurger`, `UserSettings.StylePurgeSection`, Bottom bar button XAML, `CheckupSpecialButtonBackground` (both themes + Design Harness if referenced).
+- Add: an iLogic service (discovery + run, late-bound); `FieldCatalogBuilder` Special Functions entry (fixed first); `RowModel` Rule Row state (label, empty / missing / running); Rule Button + Rule Selector popup in `CheckupWindow.xaml`; ViewModel commands for run (left-click) and open selector (right-click) — MVVM, no new code-behind logic; `Rules\` output copy in all 4 head projects; Bottom bar centring (D11).
+- Language keys (EN + DE): Field Selector entry, empty-button label, tooltip, Rule Selector group labels (Document Rules / Checkup / no-iLogic hint), status messages.
+
+**Tests (net8 + net48).** Field Key parse/format (`SPECIAL:RULE:`, `EXT:`, `ADDIN:`, `DOC:`; same file name under `EXT:` and `ADDIN:` stays distinct); Rule Selector grouping + natural sort + duplicate folder label; Special Functions entry always first; legacy `StylePurge` settings guard test; presets round-trip a Rule Row key.
+
+**Documentation — after code is done and user-tested:** TDD section-wide edits (§1, §3, §4, §5.1 Special Functions / Value Field / Bottom bar / status message, §5.2 multi-select, §5.4 theme key, §5.6 rewritten as "Run iLogic Rule", §5.7, §6.1, §6.4, §8, §9, §11, §12, Appendix A, §14 v0.16.0) + `Getting-Started.md` + README + in-app Info (`InfoPanelBuilder`).
+
+> **Superseded by T47 (§10.5):** D11 (Preset buttons centred on the window) — T47 moves the Preset Buttons to the left.
+
+### 10.5 Task #47 — Preset Buttons visual rework (IMPLEMENTED + Inventor-verified 2026 + 2024, 2026-09-30)
+
+> **Implementation notes (2026-09-30).** (1) D4 naming: a trailing ` (n)` on the active preset's name is stripped before numbering, so a copy of "Demo (2)" becomes "Demo (3)", not "Demo (2) (2)". (2) D7 confirmation uses the themed `InfoDialog` with OK / Cancel. (3) Layout: `Views/PresetBarPanels.cs` — `PresetBarPanel` (presets → More → "+") + `PresetOverflowPanel` (items panel; commits `IsOverflow` in ArrangeOverride). (4) List rules are static methods of `PresetsManager` (unit-tested in `Tests/PresetBarTests.cs`); the ViewModel exposes `PresetButtons` (`Models/PresetButtonVm.cs`). (5) Shipped `Checkup_Settings.json` Demo carries the fixed ID `demo`; admin entries without an ID get `default-<position>` (stable across window opens).
+
+**Goal.** Replace the three fixed, window-centred Preset buttons by a dynamic list the user can grow, shrink and reorder. Factory state shows a single **Demo** button. Left-click (switch) and right-click (context menu) keep working as today; renaming still happens on Save (§5.1 "Preset buttons — additional detail").
+
+**Vocabulary (added to §8 + Appendix A on completion).**
+
+| Term | Meaning |
+|---|---|
+| **Preset Button** | One button in the Preset Bar; represents one preset. |
+| **Preset Bar** | The left group of the Bottom bar: Preset Buttons + More Button + Add Preset Button. |
+| **Add Preset Button** | The square **"+"** button; adds a copy of the active preset. |
+| **More Button** | The **"More ›"** overflow button; lists the Preset Buttons that do not fit. |
+| **Preset ID** | Stable unique identifier of a preset; independent of its position and its label. |
+
+**Decisions (user, 2026-09-30).**
+
+- **D1 — Factory state.** Shipped / after Reset (no admin presets, see D14): exactly **one** Preset Button, **"Demo"**.
+- **D2 — Position.** The Preset Bar moves to the **left** of the Bottom bar; its left edge is vertically aligned with the Rows' Drag Handles and the View Mode Cycle button (S/C/D). The right group (Info / Reset / Close) is unchanged. Supersedes §10.4 D11.
+- **D3 — Order.** Left → right: Preset Buttons in list order → **More Button** (only when needed, D8) → **Add Preset Button**. The "+" is always the last element of the Preset Bar.
+- **D4 — Add Preset Button.** Square (height = Bottom bar button height, 30 × 30), label **"+"**, tooltip "Add a copy of the active preset". A single left-click adds a new preset that copies the **currently active preset in its live state** — the Rows **as they are right now, including unsaved changes** (user choice B). The new preset:
+  - gets a new Preset ID;
+  - is named `<active name> (n)` with the smallest n ≥ 2 that is not yet used (e.g. "Demo (2)", "Demo (3)");
+  - is appended at the **right end** of the list and becomes the **active** preset immediately;
+  - inherits `IsDemo` from the source preset (the §5.1 clearing rule on Save stays unchanged);
+  - is persisted immediately (registry).
+  Renaming = the normal Save flow (D3 of the context menu, InputDialog).
+- **D5 — Hard limit: 12 presets.** At 12 the "+" is **disabled** (greyed) and its tooltip says "Maximum of 12 presets reached". Import never adds presets (it replaces one, D12), so the limit cannot be bypassed.
+- **D6 — Width.** A Preset Button's width follows its label between **MinWidth 50 px** and **MaxWidth 120 px**; a longer label is trimmed with an ellipsis and the **full name is shown on the tooltip**. Single line, never wraps. Same Option C active-state visual as today (§5.3, §6.3).
+- **D7 — Context menu.** Existing items unchanged (Save, Export, Export all, Import). New last item **"Delete preset"** (DE "Preset löschen"), after a separator:
+  - asks for **confirmation** (themed `InfoDialog`-style Yes/No, preset name in the text);
+  - **disabled** when only one preset is left (there is always at least one);
+  - deleting the **active** preset activates its **left** neighbour (or the new first preset if the first was deleted) and applies it;
+  - persisted immediately.
+  "Export all" exports all presets (1–12), no longer "all 3".
+- **D8 — Overflow: PatternFly-style "More ›".** When not all Preset Buttons fit into the available width, the Preset Buttons that do not fit are hidden from the right end and a **More Button** appears (label **"More ›"**, DE "Mehr ›"); a single left-click opens a menu listing the hidden presets in list order; clicking an entry switches to that preset. Reference: <https://www.patternfly.org/components/tabs/design-guidelines> (overflow tab as the last tab).
+  - The **active preset is always identifiable**: if it is hidden, the More Button shows its name instead of "More" (e.g. "Demo (4) ›") with the Option C active-state visual; right-click on the More Button in that state opens the **active preset's** context menu.
+  - The Preset Bar never wraps to a second line and never shows a scrollbar — the Bottom bar height stays fixed (§5.1 status message / T34).
+  - Overflow is recalculated on every width change (window resize, label change, add, delete, reorder, language switch).
+- **D9 — Drag-and-drop reorder (user, 2026-09-30: A + B; C = fallback).**
+  - **Principle — the list order decides, the width cuts off.** There is one ordered preset list; the bar shows presets from the left as long as they fit, the rest go into the More menu in the same order. Visible/hidden is never stored — it is recomputed from order + width. Any reorder that inserts a preset into the visible part therefore pushes whatever no longer fits (0, 1 or more buttons, depending on widths) off the right end into the More menu, automatically.
+  - **Within the bar:** drag a Preset Button onto another position of the visible Preset Buttons.
+  - **A — From the More menu:** left-click "More ›" → the dropdown opens (Field Selector dropdown style, §5.13); press + drag an entry; the dropdown **stays open during the drag**; over the bar a vertical **insert marker** shows the drop position; drop inserts the preset there. Dragging an entry up/down **inside** the dropdown reorders it among the hidden presets.
+  - **B — Onto the More Button:** dropping a visible Preset Button onto "More ›" moves that preset to the **end** of the list ("park" rarely used presets).
+  - A drag starts only after the system drag threshold (`SystemParameters.MinimumHorizontalDragDistance` / `…Vertical…`), so a plain click still switches presets. Drag opacity follows the Row drag-and-drop look (§5.1 Row Drag Handle: 50 % while dragging). The new order is persisted immediately; the active preset stays active (tracked by ID, D10).
+  - **C — Fallback (not built unless needed):** the dropdown is a separate popup window, so A drags across a window boundary inside Inventor's process (cf. §7.3 WPF gotchas). **If Inventor testing shows A/B does not work, crashes or breaks anything, fall back to C:** no drag from the dropdown; instead a context-menu item **"Move to front"** (DE "An den Anfang") moves the preset to position 1 (always visible). Drag within the visible bar stays.
+  - Note: PatternFly's overflow has no drag-and-drop — A/B go beyond the reference and are our own design.
+- **D10 — Preset ID.** `PresetData` gets `Id` (string, GUID "N" format). **Both the ID and the user's label (`Name`) are persisted** — in the registry, in `Checkup_Settings.json` and in export files. The active preset is remembered by **ID**, not by position.
+- **D11 — Migration (existing users).** On first load of an old registry `Presets` value (exactly 3 entries, no `Id`):
+  - all 3 still untouched demo presets (`IsDemoActive()` fallback rule, §5.1) → collapsed to **one** "Demo";
+  - otherwise → **all 3 kept** in their order, each gets a new ID.
+  The old `ActivePresetIndex` (DWORD) is mapped once onto the new `ActivePresetId` and then deleted.
+- **D12 — Import.** Unchanged flow (OpenFileDialog → PresetPickerDialog → replaces the right-clicked preset's `Name` + `FieldKeys`). ID handling: the imported entry keeps its file ID; if that ID is already used by **another** preset in the list — or the file entry has no ID — the target preset keeps its own ID. No duplicate IDs are ever created.
+- **D13 — Export (single / all).** Upsert into the library file **by ID**; library entries without an ID (older files) are matched **by name** as today. Exported entries always carry `Id` + `Name` + `FieldKeys` (+ `IsDemo`).
+- **D14 — Reset + administrator presets.** Reset restores the preset list from `Checkup_Settings.json → Presets`: the shipped file carries the single "Demo" (D1); an administrator may put **1 to 12** company presets there (IDs optional — missing IDs are generated at load; `"IsDemo": false` per §5.1 CAD admin workflow). The first preset becomes active. The hardcoded emergency fallback (settings file missing / unreadable) is **one empty "Demo"** preset.
+
+- **D15 — Multi-import (user, 2026-09-30).** The Import picker (`PresetPickerDialog`) lists the file's presets with a **checkbox** each (several can be ticked) and has two action buttons:
+  - **"Replace this preset"** — enabled when **exactly one** entry is ticked; unchanged D12 behaviour (overwrites the right-clicked preset). Double-click on an entry = replace with that entry.
+  - **"Add as new"** — enabled when **one or more** entries are ticked; each ticked entry is **added as a new Preset Button** at the right end, in file order.
+  - **Conflicts (Q2/Q4):** an entry whose **ID or Name** equals an existing preset triggers a question per entry: **Overwrite** (update that existing preset's name + field keys; ID match wins over name match; first match) / **Add as new** / **Cancel** (aborts the whole import — nothing is changed). A checkbox "Apply to all remaining conflicts" answers the rest at once. "Add as new" keeps the file ID when it is free, otherwise gets a new ID (never a duplicate ID); names are taken as in the file.
+  - **Limit (Q1):** the picker shows how many presets can still be added (12 − current). Ticked entries that match **no** existing preset always need a new slot; if they alone exceed the free slots, "Add as new" is disabled and a hint tells the user to import fewer presets. After the conflict questions, if the final number of additions exceeds the free slots, the user is told so and nothing is changed.
+  - **Active preset (Q3):** unchanged — the current Rows stay; status "`n` presets imported". Exception: if the active preset itself is overwritten, its new field keys are applied (as D12).
+  - Imported presets get `IsDemo = false` (as D12).
+
+**Storage.**
+
+| Location | Before | After |
+|---|---|---|
+| `HKCU\Software\Checkup 20xx\Presets` (REG_SZ, JSON) | exactly 3 × {Name, FieldKeys, IsDemo} — anything else discarded | 1–12 × {**Id**, Name, FieldKeys, IsDemo}; same value name (no new value) |
+| `HKCU\Software\Checkup 20xx\ActivePresetIndex` (DWORD 0–2) | active slot | **removed** (migrated once, D11) |
+| `HKCU\Software\Checkup 20xx\ActivePresetId` (REG_SZ) | — | **new**: ID of the active preset |
+| `Checkup_Settings.json → Presets` (×4 variants) | 3 × "Demo" | 1 × "Demo" (`IsDemo: true`, fixed ID); admin: 1–12 entries |
+| Export library file | {Name, FieldKeys} upsert by Name | + `Id`, upsert by ID (fallback Name) |
+
+**Load validation (`PresetsManager`).** Accept 1–12 entries (more than 12 → first 12 kept); 0 entries / unreadable → defaults (D14); empty or duplicate IDs → regenerated; an `ActivePresetId` that no longer exists → first preset. `GetDefaults()` must copy **every** field incl. `Id` and `IsDemo` (§5.1 rule).
+
+**Demo warning (§5.1).** `IsDemoActive()` no longer requires exactly 3 presets: true when **all** presets (any count ≥ 1) are demo presets. The rest of the warning logic is unchanged.
+
+**Window MinWidth.** `BottomBar_SizeChanged` today reserves presets + 2 × right group. New rule: MinWidth = the width needed for **one Preset Button (MaxWidth) + More Button + Add Preset Button + right group** — everything else goes into the More menu (D8).
+
+**Code changes (rebuild required).**
+
+- `PresetData`: + `Id`.
+- `PresetsManager`: 1–12 validation, ID generation/dedup, migration (D11), export upsert by ID (D13), fallback = 1 "Demo", `GetDefaults()` copies `Id`.
+- `UiStateStore`: `ActivePresetId` (save/load) replaces `ActivePresetIndex` (+ one-time migration/delete).
+- `CheckupViewModel`: `Preset1..3Name` / `Preset1..3Command` / `IsPreset1..3Active` replaced by an `ObservableCollection<PresetButtonVm>` (Id, Name, IsActive, IsOverflow) + commands `SwitchPreset`, `AddPreset` (CanExecute: count < 12), `DeletePreset` (CanExecute: count > 1), `MovePreset(from, to)`; `SavePreset` / `ExportPreset` / `ImportPresetInto` addressed by ID; `ResetToDefaults` + `IsDemoActive` per D14 / demo rule.
+- `CheckupWindow.xaml`: Preset Bar = `ItemsControl` of Preset Buttons (one shared `ControlTemplate` + `ContextMenu` instead of three copies) + More Button + Add Preset Button, in the left column of `BottomButtonsRow`. Overflow via a small layout-only **custom panel** (measures children, marks the ones that do not fit as overflow) — no business logic in code-behind.
+- `CheckupWindow.xaml.cs`: Preset Button drag-and-drop (same place as the Row drag-and-drop); context-menu handlers pass the preset ID instead of `Tag="0..2"`; MinWidth rule.
+- `Checkup_Settings.json` (×4 variants): single "Demo" with an ID.
+- Language keys (EN + DE): `Tip_AddPreset`, `Tip_AddPresetLimit`, `Btn_PresetMore`, `Menu_DeletePreset`, `Dlg_DeletePreset_Title` / `_Body`, `Msg_PresetAdded`, `Msg_PresetDeleted`; `Menu_ExportAllPresets` text if it mentions "3".
+- Design Harness: main-window preview must render the new Preset Bar.
+
+**Tests (net8 + net48).** Load validation (0 / 1 / 12 / 13 entries, duplicate + empty IDs, unknown active ID); migration (3 untouched demos → 1; 3 customised → 3 with IDs; `ActivePresetIndex` → `ActivePresetId`); "+" naming (`(2)`, gap filling, collision with a user label) + limit 12; delete (last preset protected; active → left neighbour); reorder keeps the active ID; export upsert by ID + name fallback for old files; import ID collision; `GetDefaults()` copies `Id` + `IsDemo`; `IsDemoActive()` with 1 and with N presets; admin settings file with 5 presets without IDs.
+
+**Documentation — after code is done and user-tested:** §5.1 (Bottom bar table, Preset buttons detail, demo warning), §5.3 (rewritten: dynamic Preset Bar), §6.3 (Option C now also for the More Button), §7.7 Design Harness, §8 + Appendix A (vocabulary above), §11, §14 v0.16.0; `Getting-Started.md`, README, in-app Info (`Info_Main_Preset`, `InfoPanelBuilder`). The T45/T46 change notes may be merged/reworded into one v0.16.0 entry.
+
+---
+
+### 10.6 Task #48 — Window placement + Reset coverage (IMPLEMENTED + Inventor-verified 2026-10-01)
+
+**Problem.** (A) Reset deleted a hand-maintained list of size values; the Logics-Constructor ℹ windows (`RoleHelp`, `CardHelp`) were saved under keys that list never contained (it named an unused `LogicBuilder` key), and Preset Import, Preset Conflict, Catalog Picker, Logic-row dropdowns and the small confirm dialogs were never reset either. (B) Windows always opened centered — users with multi-monitor setups had to move the main window every time. Two dialogs had no owner (main ℹ Info, "Write failed" message boxes) and could open behind Inventor / off-center.
+
+**Decisions (user, 2026-10-01).**
+
+| # | Decision |
+|---|---|
+| D1 | Reset clears **all** remembered sizes, including Logic-row dropdown heights/column widths, by value-name prefix (§5.11). |
+| D2 | Main window + Logics-Constructor **always** reopen at the last monitor + position (+ size). Hard-coded, no setting, no toggle, no admin key in `Checkup_Settings.json`. |
+| D3 | **Only Reset** brings the main window back to the center of Inventor's monitor (immediately, while open) and clears both stored placements. |
+| D4 | Info windows and every child dialog open above their own parent window, centered on it (`Owner` + `CenterOwner`); their position is never remembered. Missing owners fixed. |
+| D5 | Maximized: Logics-Constructor reopens maximized if closed maximized; the main window never reopens maximized (side panel). |
+| D6 | A stored placement whose title bar is no longer on any monitor is ignored → factory centering. |
+
+**Implementation.**
+- New `Services/WindowPlacement.cs` (static, Win32 P/Invoke `GetWindowPlacement` / `SetWindowPlacement` / `MonitorFromPoint` / `MonitorFromWindow` / `GetMonitorInfo` / `SetWindowPos`): `Capture(window, allowMaximized)` → `"l,t,r,b,max"`; `IsUsable(string)` (parse + D6 check, callable before the HWND exists); `Apply(window, string, allowMaximized)` (call from `OnSourceInitialized`); `CenterOnMonitorOf(window, anchorHwnd)` (Reset, physical-pixel math on the anchor's monitor work area).
+- `UiStateStore`: `SaveWindowPlacement` / `LoadWindowPlacement` (`WindowPlacement`) and `SaveCatalogBuilderPlacement` / `LoadCatalogBuilderPlacement` (`CatalogBuilderPlacement`); `ClearWindowSizes()` rewritten to delete by prefix.
+- `CheckupWindow`: load placement in `SetViewModel` → `WindowStartupLocation = Manual` if usable; apply in `OnSourceInitialized`; capture in `OnClosing`; `RequestResetWindowSize` → `WindowState = Normal`, 650 × 900, then `CenterOnMonitorOf(this, owner HWND)` at `DispatcherPriority.Loaded` (after the size reached the HWND). Sets `CheckupViewModel.DialogOwner = this` (cleared on close).
+- `CatalogBuilderWindow`: same load/apply/capture with maximized allowed.
+- `CheckupViewModel`: `DialogOwner` property; `ShowInfo` sets it as `InfoDialog.Owner`; the three "Write failed" `MessageBox.Show` calls use it as owner.
+- Existing `WindowWidth/Height` + `CatalogBuilderWidth/Height` stay (size fallback when no placement exists, e.g. first open after the update).
+
+**Verify (Inventor 2026 + 2024).** Move main window to the second monitor, close/reopen → same spot; restart Inventor → same spot; maximize + close main → reopens normal at old spot; Logics-Constructor moved/resized/maximized → restored; unplug/disable the second monitor (or change resolution) → centered on Inventor's monitor; Reset with main window on monitor 2 → jumps to the center of Inventor's monitor at 650 × 900; after Reset every ℹ window / Preset Import / Catalog Picker / Logic dropdown opens at factory size; main ℹ Info opens centered above the main window, wherever it is; first open after updating from v0.15 → remembered size, centered.
+
 ---
 
 ## Appendix A — Naming Glossary
@@ -2102,11 +2377,16 @@ Alphabetical quick-reference. Every term used in this TDD, conversations, and co
 |---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **Action Button**       | Optional button at the far right of the Value Field frame; opens a secondary window (e.g. Picker Window)                                                                                                                                                                                                   |
 | **Basic Logic**         | Formula-driven function inside a Group; purely computational; no catalog required; rudimentary spreadsheet-style formulas (IF, CONCAT, ROUND, etc.)                                                                                                                                                        |
-| **Bottom bar**          | The bottommost row of the main window; contains Style Purger (left), Preset buttons (centre), Info/Reset/Close (right)                                                                                                                                                                                     |
+| **Bottom bar**          | The bottommost row of the main window; contains the Preset Bar (left) and Info/Reset/Close (right). The former Style Purger button was removed (T46) |
+| **Preset Bar**          | Left group of the Bottom bar (T47): Preset Buttons → More Button (only on overflow) → Add Preset Button |
+| **Preset Button**       | One button in the Preset Bar; represents one preset. Left-click = switch, right-click = context menu, drag = reorder |
+| **Add Preset Button**   | The square "+" button; adds a copy of the active preset (live Rows) — up to 12 presets |
+| **More Button**         | The "More ›" overflow button; lists the Preset Buttons that do not fit. Shows the active preset's name while that one is hidden |
+| **Preset ID**           | Stable unique identifier of a preset (`PresetData.Id`); independent of position and label; persisted with the label in registry, settings file and export files |
 | **Capability Set**      | Named container holding one or more Groups; the top-level organisational unit in the Logics-Constructor                                                                                                                                                                                                     |
 | **Card**                | One logic brick inside a Group; catalog-backed or higher-level; may have interactive visual component (Dropdown, Button, Search, Link, Sync, MultiPick, PairTransform, Compose, PrefixSuffix, Sort, BasicLogic)                                                                                                                            |
 | **Catalog**             | Named data table with columns and entries; the data source for Dropdown/Button/Search cards                                                                                                                                                                                                                |
-| **Document Name Field** | Header bar element showing the active/selected document filename(s); three view modes (Plain/Compact/Detailed) cycled via the View Mode button (label `S ⇄` / `C ⇄` / `D ⇄`) or left-click; auto-wraps/trims at 2 lines (Plain/Compact) or 5 lines (Detailed); full text on tooltip; mode persisted in Registry                                                                   |
+| **Document Name Field** | Header bar element showing the active/selected document filename(s); three view modes (Plain/Compact/Detailed) cycled via the View Mode button (label `S ⇄` / `C ⇄` / `D ⇄`) only; right-click copies the shown text to the clipboard; auto-wraps/trims at 2 lines (Plain/Compact) or 5 lines (Detailed); full text on tooltip; mode persisted in Registry                                                                   |
 | **Drag Handle**         | The 2×3 dot grid used as the sole initiation point for drag-and-drop reordering. In the main window: far left of every Row (before the Value Field). In the Logics-Constructor: also appears in Group header bars (reorders Groups) and in Card/Basic Logic rows (reorders items within or between Groups). |
 | **ESC key**             | Closes the active add-in window — same effect as the dedicated close button                                                                                                                                                                                                                                |
 | **Factory size**        | The code-defined default window dimensions; restored on Reset                                                                                                                                                                                                                                              |
@@ -2122,14 +2402,18 @@ Alphabetical quick-reference. Every term used in this TDD, conversations, and co
 | **Miter Gap**           | ⚠ **Removed (Task #29).** Was an editable sheet metal value (`SPECIAL:MiterGap`, German: "Gehrungslücke"). Fully removed — no catalog entry, no resolver, no `SheetMetalReader`. Old presets degrade to a missing-field row.                                                                                                                              |
 | **MultiPick Card**      | Card enabling multi-token input with per-separator autocomplete                                                                                                                                                                                                                                            |
 | **Picker Window**       | Full window (not popup) for browsing and selecting catalog entries — opened from a **Button card** row. `SpeziBaukastenPickerWindow` is the legacy variant (used by old `SPECIAL:Spezi1/2` rows). `CatalogPickerWindow` is the Logics-Constructor variant.                                                            |
-| **Preset**              | Named saved row-layout configuration. Default names: Part (German: "Bauteil") and Assembly (German: "Baugruppe"). All preset names and row layouts are user-configurable.                                                                                                                                                                                                                                   |
+| **Preset**              | Named saved row-layout configuration (1–12). Factory default: a single "Demo" preset; administrators may ship company presets in `Checkup_Settings.json`. All preset names and row layouts are user-configurable.                                                                                                                                                                                                   |
 | **Reset**               | Returns window to factory size, reloads default preset, AND clears persisted Logics-Constructor panel states (via `UiStateStore.ClearCatalogBuilderPanelStates()`). After Reset, the next Logics-Constructor open uses factory defaults: Cards=open, Basic Logics=closed.                                                                                                                                                                                                                          |
 | **Row**                 | One configurable entry in the main grid: Field Selector + Value Field pair                                                                                                                                                                                                                                 |
 | **Source Object**       | The Inventor document(s) currently being read (active IPT or selected component(s))                                                                                                                                                                                                                        |
-| **Special Field**       | Any field with a `SPECIAL:` prefix — computed or catalog-backed; not a raw iProperty/parameter                                                                                                                                                                                                               |
-| **Spezi Baukasten**     | ⚠ Legacy. Catalog-backed IZ specialty designation system; produces Spezi1 (short) + Spezi2 (long) values. Replaced by Logics-Constructor capability set `IZ_Spezis_Baukasten.capability.json`. Catalog transitioned from CSV to CatalogStore JSON.                                                            |
-| **Spezi1 / Spezi2**     | ⚠ **Removed (Task #29).** Were the two IZ Spezifik fields (`SPECIAL:Spezi1` / `SPECIAL:Spezi2`), backed by `SPEZIFIK1/2`. Fully removed — no resolver code remains. Replaced by Logics-Constructor groups.                                                                                                                                      |
-| **Style Purger**        | Feature that removes unused styles from IDW/IPT/IAM documents                                                                                                                                                                                                                                              |
+| **iLogic Rule**         | An External Rule (rule file) or Document Rule (stored in a document) that a Rule Button runs (T46) |
+| **Rule Button**         | Full-width button in a Rule Row; left-click runs the assigned iLogic Rule on the active document, right-click opens the Rule Selector (T46) |
+| **Rule Row**            | A Row whose Field Key starts with `SPECIAL:RULE:` — added via `S: Run iLogic Rule`; carries no value (T46) |
+| **Rule Selector**       | Popup listing all discovered iLogic Rules, grouped by folder, opened by right-clicking a Rule Button (T46) |
+| **Special Function**    | Any Field Selector entry with a `SPECIAL:` prefix (red `S:` tag): Logics-Constructor groups (`SPECIAL:LOGIC:`) and "Run iLogic Rule" (`SPECIAL:RULE:`). Formerly "Special Field" in this TDD |
+| **Spezi Baukasten**     | ⚠ Legacy. Catalog-backed specialty designation system; produces Spezi1 (short) + Spezi2 (long) values. Replaced by a Logics-Constructor capability set. Catalog transitioned from CSV to CatalogStore JSON.                                                            |
+| **Spezi1 / Spezi2**     | ⚠ **Removed (Task #29).** Were the two Spezifik fields (`SPECIAL:Spezi1` / `SPECIAL:Spezi2`), backed by `SPEZIFIK1/2`. Fully removed — no resolver code remains. Replaced by Logics-Constructor groups.                                                                                                                                      |
+| **Style Purger**        | ⚠ **Removed (T46).** Was the built-in Bottom bar button that purged unused styles from IDW/IPT/IAM documents. Its logic lives on as the shipped template rules in `Rules\`, run from a Rule Button |
 | **Theme System**        | Detects Inventor light/dark scheme and swaps the add-in's visual resource dictionaries                                                                                                                                                                                                                     |
 | **Value Field**         | UI cell spanning Drag Handle → Field Selector; shows read value; single left-click → full-width inline edit frame; can host Dropdown and/or Action Button (far right)                                                                                                                                      |
 
@@ -2155,9 +2439,8 @@ Alphabetical quick-reference. Every term used in this TDD, conversations, and co
 | `%APPDATA%\Checkup 2026\Capabilities\`                      | Per-user capability edits; same rules as AppData Catalogs                                                                                                                                                                                  |
 | `%PROGRAMDATA%\Autodesk\Inventor 2026\Addins\`              | 2026 addin manifest location                                                                                                                                                                                                               |
 | `%APPDATA%\Autodesk\ApplicationPlugins\`                    | 2024 addin manifest location                                                                                                                                                                                                               |
-| `V:\CAD\INV\Templates\Standard.idw`                         | IDW style template (deploy value)                                                                                                                                                                                                          |
-| `Bereinigen IDW+IPT+IAM.iLogicVb`                           | iLogic port of StylePurger (kept in sync with StylePurger.cs)                                                                                                                                                                              |
-| `Checkup_Settings.json`                                     | Main settings file (presets + StylePurge config + SpeziBaukastenCatalogPath); deployed next to DLL; loaded at startup as `UserSettings` object                                                                                               |
+| `CheckupAddin2026\CheckupAddin2026\Rules\`                  | Shipped template iLogic rules (`Bereinigen IDW+IPT+IAM.iLogicVb`, `Purge Styles Selection IDW+IPT+IAM.iLogicVb`) — single source, linked by 2024/2025/2027; copied to `bin\Rules\` and packed by `build_release.ps1`; the Rule Selector's "Checkup" group (§5.6) |
+| `Checkup_Settings.json`                                     | Main settings file (preset factory defaults); deployed next to DLL; loaded at startup as `UserSettings` object. A legacy `StylePurge` section in old files is ignored |
 | `Addin_Language_File_DE.json` / `Addin_Language_File_EN.json` | UI strings; deployed next to DLL; loaded by `LanguageLoader` at startup                                                                                                                                                                      |
 | `Spezi_Katalog.csv`                                         | ⚠ Legacy one-time import seed. On first Inventor load the addin imports this CSV into CatalogStore (ID `spezi001`) and never reads it again. Can be removed from the project source once all deployments have completed the one-time import. |
 | `Checkup_Catalogs.json`                                     | Seed catalog data; in project source → copied to bin on build; migrated to AppData on first Inventor load                                                                                                                                  |
@@ -2178,7 +2461,7 @@ When contributing code, observe the following rules:
 - **Path construction:** always use `Path.Combine` — never string concatenation with `\`.
 - **String comparison:** use `StringComparison.Ordinal` for all internal key/tag comparisons; `OrdinalIgnoreCase` only where case-insensitive matching is semantically required.
 - **INPC completeness:** every property that a binding can observe must raise `OnPropertyChanged()` in its setter, including computed / derived properties.
-- **`StylePurger` loop pattern:** `while (collection.Count > 0)` with live `.Count` is intentional — items are deleted during iteration; caching the count would break deletion. Do not refactor this loop.
+- **Purge rule loop pattern** (shipped iLogic rules, formerly `StylePurger`): `PurgeCollection` / `PurgeAssets` read the live `.Count` while deleting during iteration — intentional; caching the count would break deletion. Do not refactor this loop.
 - **2024 porting:** see §7.1 for the full .NET 4.8 / C# 12 equivalence table.
 
 ---
@@ -2217,6 +2500,15 @@ The GPL-3.0 formally requires all linked libraries to be free software. `Autodes
 ## 14. Change History
 
 Public release history.
+
+### v0.16.0 — Run iLogic Rule, dynamic Preset Bar, Document Name Field click-target (unreleased)
+
+- **Run iLogic Rule** (Task #46): the built-in Style Purger is removed. Any Row can now host a **Rule Button** (Field Selector → `S: Run iLogic Rule`) that runs an iLogic rule on a single left-click; right-click opens the Rule Selector (Document Rules, Inventor's External Rule Directories, and the add-in's own `Rules\` folder). The former purge logic ships as two template rules. See §5.6 + §10.4.
+- **Dynamic Preset Bar** (Task #47): 1–12 presets instead of three fixed ones, left-aligned; **"+"** adds a copy of the active preset (incl. unsaved rows); **Delete** in the context menu; **drag-and-drop reorder**; PatternFly-style **More ›** overflow; every preset has a stable ID (registry, settings file, export/import); import can **add several presets at once** (with overwrite/add-as-new questions on name/ID conflicts). Factory state = one "Demo" preset; existing preset data is migrated automatically. See §5.1, §5.3 + §10.5.
+- **Document Name Field** (Task #45): only the View Mode Cycle button cycles S/C/D; right-click on the file name copies it to the clipboard. See §5.1.
+- **Window placement** (Task #48): the main window and the Logics-Constructor reopen where they were last closed (monitor, position, size; Logics-Constructor also maximized); **Reset** centers the main window on Inventor's monitor again and now resets every remembered window/dialog/dropdown size; Info windows and dialogs always open above and centered on their parent window. See §5.11 + §10.6.
+- **Language files:** the last hard-coded UI texts (copy confirmation in the status line, the "Write failed" message box + title, the missing-target-field status) now come from the EN/DE language files. The shipped iLogic rules carry a neutral, empty CONFIGURATION block and report their runtime as seconds (< 1 min) or minutes + seconds.
+- Unit tests grown to 229 (net8 + net48); build clean across all four variants.
 
 ### v0.15.0 — Compose card + Split Mode + generation-scoped SPEZIFIK pipeline + responsive card editor (2026-06-27)
 

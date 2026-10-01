@@ -1,61 +1,41 @@
-﻿' Bereinigen IDW+IPT+IAM
-' Stand: 2026-05-08
+﻿' Bereinigen IDW+IPT+IAM (Purge Styles)
+' Last updated: 2026-05-08 (comments translated to English 2026-09-29)
 '
-' Bereinigt Stile in IDW-, IPT- (inkl. Blech) und IAM-Dokumenten.
-' Bei IDW wird zusätzlich:
-'   - Rahmen, Schriftfeld und Skizzensymbole aus der Vorlagedatei kopiert
-'   - Veraltete Skizzensymbol-Definitionen und ihre Instanzen gelöscht
-'   - Maßtext-Ausrichtung auf "zentriert" gesetzt
+' Purges styles in IDW, IPT (incl. sheet metal) and IAM documents — the ACTIVE document only.
+' For IDW it additionally:
+'   - copies borders, title blocks and sketched symbols from the template file
+'   - deletes obsolete sketched symbol definitions and their instances
+'   - sets the dimension text alignment to "centered"
 '
-' Entspricht der "Stile Bereinigen"-Funktion des CheckupAddin2026 (StylePurger.cs).
-' Bei Änderungen an StylePurger.cs muss dieses Skript synchron gehalten werden.
+' Formerly the built-in "Purge Styles" button of the Checkup add-in (StylePurger.cs, removed in
+' T46). Shipped with the add-in as a template rule in its Rules folder — copy it into your own
+' iLogic rule folder and adapt the CONFIGURATION block below to your paths and style names.
 '
-' Bekannte Einschränkung: "Standard"- und "Objektstandards"-Stile sind über die
-' öffentliche COM-API auf IPT/IAM nicht zugänglich und werden daher nicht aktualisiert.
-' Inventor selbst greift dafür auf internen C++-Code zu, der nicht für Skripte freigegeben ist.
+' Known limitation: "Standard" and "Object Defaults" styles are not accessible through the
+' public COM API on IPT/IAM and are therefore not updated. Inventor itself uses internal C++
+' code for that, which is not exposed to scripts.
 
 Sub Main()
     ' ═══════════════════════════════════════════════════════════════════════
-    '  KONFIGURATION — hier bei Bedarf anpassen
+    '  CONFIGURATION — adapt here as needed
     ' ═══════════════════════════════════════════════════════════════════════
 
-    Dim templateFilePath As String = "V:\CAD\INV\Templates\Standard.idw"
+    ' Drawing template (IDW) to copy borders, title blocks and sketched symbols from.
+    ' Empty = nothing is copied. Example: "C:\CAD\Templates\Standard.idw"
+    Dim templateFilePath As String = ""
 
-    Dim borderDefinitions As String() = New String() {
-        "A4 IZ-Rahmen",
-        "A3 IZ-Rahmen",
-        "A2 IZ-Rahmen",
-        "A1 IZ-Rahmen",
-        "A0 IZ-Rahmen"
-    }
+    ' Border definitions to copy from the template. Example: {"A4 Border", "A3 Border"}
+    Dim borderDefinitions As String() = New String() {}
 
-    Dim titleBlockDefinitions As String() = New String() {
-        "IZ_Teil",
-        "IZ_Auftrag",
-        "IZ_Auftrag Englisch"
-    }
+    ' Title block definitions to copy from the template. Example: {"Title Block Part", "Title Block Assembly"}
+    Dim titleBlockDefinitions As String() = New String() {}
 
-    Dim sketchedSymbolsToCopy As String() = New String() {
-        "Blechstil",
-        "Schliffrichtung"
-    }
+    ' Sketched symbols to copy from the template. Example: {"Grain Direction", "Surface Finish"}
+    Dim sketchedSymbolsToCopy As String() = New String() {}
 
-    Dim sketchedSymbolsToDelete As String() = New String() {
-        "Abwicklung V170",
-        "Abwicklung BVA",
-        "Kopie von Schliffrichtung",
-        "Kopie von Blechstil",
-        "Sichtseite",
-        "Sichtseite 2",
-        "Schweißzeichnung",
-        "Abwicklung-Skizz. Symbole",
-        "Eckbereich komplett verschweißen",
-        "Aussehen der Schweißnaht...",
-        "Feder re",
-        "Feder li",
-        "Bohrungen abkleben",
-        "einkleben mit...."
-    }
+    ' Obsolete sketched symbols to delete (definitions and all their instances).
+    ' Example: {"Old Symbol", "Copy of Old Symbol"}
+    Dim sketchedSymbolsToDelete As String() = New String() {}
 
     ' ═══════════════════════════════════════════════════════════════════════
 
@@ -85,8 +65,8 @@ Sub Main()
 
     stopWatch.Stop()
     Dim ts As TimeSpan = stopWatch.Elapsed
-    Dim elapsedTime As String = String.Format("{0:00}:{1:00}", ts.Seconds, ts.Milliseconds / 10)
-    Logger.Info("Bereinigen fertig – " & result & " – Laufzeit " & elapsedTime & " (Sekunden:Millisekunden)", filename)
+    Dim elapsedTime As String = FormatRuntime(ts)
+    Logger.Info("Bereinigen fertig – " & result & " – Laufzeit " & elapsedTime, filename)
     iLogicVb.UpdateWhenDone = True
 End Sub
 
@@ -98,7 +78,7 @@ End Sub
 Function PurgeDrawing(doc As DrawingDocument, templateFilePath As String, borderDefinitions As String(), titleBlockDefinitions As String(), sketchedSymbolsToCopy As String(), sketchedSymbolsToDelete As String()) As String
     Dim warnings As New List(Of String)
 
-    ' 1. Erste Runde: alle nicht-Bibliotheks-Stile aktualisieren
+    ' 1. First pass: update all non-library styles
     Dim styleSnapshot As New List(Of Style)
     For Each st As Style In doc.StylesManager.Styles
         styleSnapshot.Add(st)
@@ -113,7 +93,7 @@ Function PurgeDrawing(doc As DrawingDocument, templateFilePath As String, border
         End If
     Next
 
-    ' 2. Rahmen / Schriftfelder / Skizzensymbole aus Vorlagedatei kopieren
+    ' 2. Copy borders / title blocks / sketched symbols from the template file
     If Not String.IsNullOrWhiteSpace(templateFilePath) Then
         Try
             CopyFromTemplate(doc, warnings, templateFilePath, borderDefinitions, titleBlockDefinitions, sketchedSymbolsToCopy)
@@ -122,7 +102,7 @@ Function PurgeDrawing(doc As DrawingDocument, templateFilePath As String, border
         End Try
     End If
 
-    ' 3. Veraltete Skizzensymbol-Instanzen und -Definitionen löschen
+    ' 3. Delete obsolete sketched symbol instances and definitions
     For Each symbolName As String In sketchedSymbolsToDelete
         Dim symDef As SketchedSymbolDefinition = Nothing
         Try
@@ -150,13 +130,13 @@ Function PurgeDrawing(doc As DrawingDocument, templateFilePath As String, border
         End Try
     Next
 
-    ' 4. Maßtext-Ausrichtung auf "zentriert beibehalten" setzen
+    ' 4. Set dimension text alignment to "maintain centered"
     Try
         doc.DrawingSettings.DimensionTextAlignment = DimensionTextAlignmentEnum.kMaintainCenteredTextAlignment
     Catch
     End Try
 
-    ' 5. Schleife: nicht aktuelle Stile aktualisieren + unbenutzte löschen, bis stabil
+    ' 5. Loop: update out-of-date styles + delete unused ones until stable
     Dim changed As Boolean
     Dim loopPass As Integer = 0
     Do
@@ -242,7 +222,7 @@ End Sub
 
 
 ' ═══════════════════════════════════════════════════════════════════════════
-'  IPT (regulär und Blech)
+'  IPT (standard and sheet metal)
 ' ═══════════════════════════════════════════════════════════════════════════
 
 Function PurgePart(doc As PartDocument) As String
@@ -332,7 +312,7 @@ End Function
 
 
 ' ═══════════════════════════════════════════════════════════════════════════
-'  Hilfsfunktionen
+'  Helper functions
 ' ═══════════════════════════════════════════════════════════════════════════
 
 ' Inventor holds a lock on the active sheet metal style and silently ignores
@@ -674,4 +654,12 @@ Function PurgeAssets(collection As Object) As Boolean
     Catch
     End Try
     Return anyDeleted
+End Function
+
+' Runtime text: seconds below one minute ("4.2 s"), minutes and seconds from one minute on ("2 min 05 s").
+Function FormatRuntime(ts As TimeSpan) As String
+    If ts.TotalSeconds < 60 Then
+        Return ts.TotalSeconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) & " s"
+    End If
+    Return CInt(Math.Floor(ts.TotalMinutes)).ToString() & " min " & ts.Seconds.ToString("00") & " s"
 End Function

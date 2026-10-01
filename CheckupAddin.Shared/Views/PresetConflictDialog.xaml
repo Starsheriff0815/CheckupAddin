@@ -1,0 +1,78 @@
+<Window x:Class="CheckupAddIn.Views.PresetConflictDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="{DynamicResource Dlg_PresetConflict_Title}"
+        Width="440" Height="230"
+        MinWidth="400" MinHeight="200"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize"
+        ShowInTaskbar="False"
+        SizeChanged="Window_SizeChanged"
+        Background="{DynamicResource CheckupWindowBackground}"
+        Foreground="{DynamicResource CheckupPrimaryText}"
+        FontFamily="Segoe UI" FontSize="12">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/CheckupAddIn;component/Resources/DarkTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <Style TargetType="Button">
+                <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                <Setter Property="VerticalContentAlignment"   Value="Center"/>
+                <Setter Property="MinWidth" Value="70"/>
+                <Setter Property="Height"   Value="28"/>
+                <Setter Property="Padding"  Value="10,0"/>
+                <Setter Property="FontSize" Value="11"/>
+                <Setter Property="Background"  Value="{DynamicResource CheckupButtonBackground}"/>
+                <Setter Property="Foreground"  Value="{DynamicResource CheckupButtonForeground}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource CheckupButtonBorder}"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="border"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="1"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                  TextBlock.Foreground="{TemplateBinding Foreground}"
+                                                  Focusable="False"
+                                                  RecognizesAccessKey="True"
+                                                  SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="border" Property="Opacity" Value="0.8"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="border" Property="Opacity" Value="0.6"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+        </ResourceDictionary>
+    </Window.Resources>
+    <!-- T47 D15: asked once per imported preset whose ID or name already exists. -->
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <TextBlock Grid.Row="0" x:Name="BodyText" TextWrapping="Wrap"
+                   Foreground="{DynamicResource CheckupPrimaryText}"/>
+        <CheckBox Grid.Row="1" x:Name="ApplyAllCheck"
+                  Content="{DynamicResource Chk_PresetConflict_ApplyAll}"
+                  Foreground="{DynamicResource CheckupPrimaryText}"
+                  Margin="0,8,0,12" Visibility="Collapsed"/>
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="{DynamicResource Btn_PresetOverwrite}" Margin="0,0,8,0" Click="Overwrite_Click"/>
+            <Button Content="{DynamicResource Btn_PresetAddNew}"    Margin="0,0,8,0" Click="AddNew_Click" IsDefault="True"/>
+            <Button Content="{DynamicResource Btn_Cancel}"          IsCancel="True"  Click="Cancel_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

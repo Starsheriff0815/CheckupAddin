@@ -202,6 +202,10 @@ foreach ($y in $Years) {
     New-Item -ItemType Directory "$pkg\Languages" | Out-Null
     Copy-Item "$bin\Languages\*" "$pkg\Languages\" -Recurse
 
+    # Template iLogic rules (T46) — listed in the Rule Selector's "Checkup" group
+    New-Item -ItemType Directory "$pkg\Rules" | Out-Null
+    Copy-Item "$bin\Rules\*.iLogicVb" "$pkg\Rules\"
+
     # Seed data — ONLY the git-tracked public seeds (Demo.*). The private
     # Test_Spezifik.* seeds also live in bin\ on dev machines; they must not ship.
     Copy-PublicSeeds -VariantRelDir "CheckupAddin$y/CheckupAddin$y" -Bin $bin -Pkg $pkg

@@ -1,57 +1,9 @@
 {
-  "_Info": "Checkup Add-In 2026 — Checkup_Settings.json. Factory defaults. User-saved presets are stored in the Windows Registry (HKCU\\Software\\Checkup 2026\\Presets). Edit StylePurge to match your company template and style names.",
-  "_PathHelp": "For TemplateFilePath use forward slashes (Z:/Checkup/Standard.idw) OR escaped backslashes (Z:\\Checkup\\Standard.idw). A single backslash in JSON is an escape character; the loader auto-corrects common cases, but forward slashes always work.",
-
-  "StylePurge": {
-    "TemplateFilePath": "Z:/Checkup/Standard.idw",
-
-    "BorderDefinitions": [
-      "A4 Border",
-      "A3 Border",
-      "A2 Border",
-      "A1 Border",
-      "A0 Border"
-    ],
-
-    "TitleBlockDefinitions": [
-      "Standard Title Block"
-    ],
-
-    "SketchedSymbolsToCopy": [],
-
-    "SketchedSymbolsToDelete": []
-  },
+  "_Info": "Checkup Add-In 2026 — Checkup_Settings.json. Factory default presets: 1 to 12 entries (Id optional — generated when missing; Name = button label). Reset restores this list. User-saved presets are stored in the Windows Registry (HKCU\\Software\\Checkup 2026\\Presets). The former StylePurge section is gone: style cleanup is now an iLogic rule in the Rules folder next to the add-in DLL.",
 
   "Presets": [
     {
-      "Name": "Demo",
-      "IsDemo": true,
-      "FieldKeys": [
-        "IPROP|Description",
-        "IPROP|Part Number",
-        "DOC:Material",
-        "DOC:Appearance",
-        "IPROP|Revision Number",
-        "SPECIAL:LOGIC:demo-g03",
-        "SPECIAL:LOGIC:demo-g01",
-        "SPECIAL:LOGIC:demo-g08"
-      ]
-    },
-    {
-      "Name": "Demo",
-      "IsDemo": true,
-      "FieldKeys": [
-        "IPROP|Description",
-        "IPROP|Part Number",
-        "DOC:Material",
-        "DOC:Appearance",
-        "IPROP|Revision Number",
-        "SPECIAL:LOGIC:demo-g03",
-        "SPECIAL:LOGIC:demo-g01",
-        "SPECIAL:LOGIC:demo-g08"
-      ]
-    },
-    {
+      "Id": "demo",
       "Name": "Demo",
       "IsDemo": true,
       "FieldKeys": [
