@@ -2501,7 +2501,7 @@ The GPL-3.0 formally requires all linked libraries to be free software. `Autodes
 
 Public release history.
 
-### v0.16.0 — Run iLogic Rule, dynamic Preset Bar, Document Name Field click-target (unreleased)
+### v0.16.0 — Run iLogic Rule, dynamic Preset Bar, window placement, Document Name Field click-target (2026-10-01)
 
 - **Run iLogic Rule** (Task #46): the built-in Style Purger is removed. Any Row can now host a **Rule Button** (Field Selector → `S: Run iLogic Rule`) that runs an iLogic rule on a single left-click; right-click opens the Rule Selector (Document Rules, Inventor's External Rule Directories, and the add-in's own `Rules\` folder). The former purge logic ships as two template rules. See §5.6 + §10.4.
 - **Dynamic Preset Bar** (Task #47): 1–12 presets instead of three fixed ones, left-aligned; **"+"** adds a copy of the active preset (incl. unsaved rows); **Delete** in the context menu; **drag-and-drop reorder**; PatternFly-style **More ›** overflow; every preset has a stable ID (registry, settings file, export/import); import can **add several presets at once** (with overwrite/add-as-new questions on name/ID conflicts). Factory state = one "Demo" preset; existing preset data is migrated automatically. See §5.1, §5.3 + §10.5.
